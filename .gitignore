@@ -7,11 +7,13 @@ wandb
 runs
 baselines
 checkpoints
-datasets
+/datasets
 .vscode
 src/models/ops/build
 src/models/ops/dist
 src/models/ops/MultiScaleDeformableAttention.egg-info
+train.sh
+eval.sh
 
 # C extensions
 *.so

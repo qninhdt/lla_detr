@@ -7,7 +7,7 @@ defaults:
 
 model_checkpoint:
   dirpath: ${paths.root_dir}/checkpoints
-  filename: "epoch_{epoch:03d}"
+  filename: "{epoch:03d}"
   monitor: "val/mAP"
   mode: "max"
   save_last: True

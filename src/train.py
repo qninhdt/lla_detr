@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional, Tuple
 
 import hydra
+import torch
 import lightning as L
 import os
 import sys
@@ -10,7 +11,7 @@ from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig
 
 sys.path.append(str(Path(__file__).parent))
-os.environ['PROJECT_ROOT'] = str(Path(__file__).parent.parent)
+os.environ["PROJECT_ROOT"] = str(Path(__file__).parent.parent)
 
 from utils import (
     RankedLogger,
@@ -39,6 +40,8 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     # set seed for random number generators in pytorch, numpy and python.random
     if cfg.get("seed"):
         L.seed_everything(cfg.seed, workers=True)
+
+    torch.set_float32_matmul_precision(cfg.get("matmul_precision"))
 
     log.info(f"Instantiating datamodule <{cfg.data._target_}>")
     datamodule: LightningDataModule = hydra.utils.instantiate(cfg.data)
