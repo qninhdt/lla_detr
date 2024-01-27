@@ -1,0 +1,56 @@
+_target_: models.deformable_detr_module.DeformableDETRModule
+
+optimizer:
+  lr: 0.0002
+  lr_backbone: 0.00002
+  lr_drop: 40
+  lr_linear_proj_mult: 0.1
+  weight_decay: 0.0001
+
+net:
+  _target_: models.deformable_detr.build
+
+  num_classes: 15
+
+  # Variants of Deformable DETR
+  with_box_refine: false
+  two_stage: false
+
+  # model parameters
+  frozen_weights: null
+
+  # backbone
+  backbone: resnet50
+  dilation: false
+  position_embedding: sine # sine | learned
+  position_embedding_scale: 6.28318530718 # 2 * pi
+  num_feature_levels: 4
+
+  # transformer
+  enc_layers: 6
+  dec_layers: 6
+  dim_feedforward: 1024
+  hidden_dim: 256
+  dropout: 0.1
+  nheads: 8
+  num_queries: 300
+  dec_n_points: 4
+  enc_n_points: 4
+
+  # loss
+  aux_loss: true
+
+  # matcher
+  set_cost_class: 2
+  set_cost_bbox: 5
+  set_cost_giou: 2
+
+  # loss coefficients
+  dice_loss_coef: 1
+  giou_loss_coef: 2
+  bbox_loss_coef: 5
+  cls_loss_coef: 2
+  focal_alpha: 0.25
+
+# compile model for faster training with pytorch 2.0
+compile: false

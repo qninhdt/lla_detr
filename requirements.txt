@@ -1,0 +1,13 @@
+torch
+torchvision
+lightning
+torchmetrics
+torchmetrics[detection]
+hydra-core
+hydra-colorlog
+hydra-optuna-sweeper
+wandb
+rich
+pandas
+matplotlib
+pillow

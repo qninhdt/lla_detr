@@ -1,0 +1,7 @@
+_target_: datasets.bdd100k_datamodule.BDD100KDataModule
+dir: ${paths.data_dir}/bdd100k
+version: 100k
+limit: 1.0
+batch_size: 2
+num_workers: 8
+pin_memory: False
