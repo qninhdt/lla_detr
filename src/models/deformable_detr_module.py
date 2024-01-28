@@ -82,6 +82,7 @@ class DeformableDETRModule(LightningModule):
         self.train_class_error.update(reduced_losses["class_error"])
 
         self.log("train/rt_loss", reduced_loss, prog_bar=True)
+        self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
 
         return loss
 
