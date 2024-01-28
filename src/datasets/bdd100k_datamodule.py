@@ -131,9 +131,11 @@ class BDD100KDataModule(LightningDataModule):
         images = [x[0] for x in batch]
         images = nested_tensor_from_tensor_list(images)
 
-        # remove zero area boxes
+        # remove zero area boxes (cxcywh format)
         for _, target in batch:
-            mask = (target["boxes"][:, 2:] < target["boxes"][:, :2]).all(dim=1)
+            mask = ~torch.isclose(
+                target["boxes"][:, 2] * target["boxes"][:, 3], torch.tensor(0.0)
+            )
             target["boxes"] = target["boxes"][mask]
             target["labels"] = target["labels"][mask]
             target["nboxes"] = target["nboxes"][mask]
