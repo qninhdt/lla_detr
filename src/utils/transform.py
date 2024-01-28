@@ -11,14 +11,14 @@ class Normalize(nn.Module):
         self.mean = mean
         self.std = std
 
-    def forward(self, sample: Dict[str, Any]) -> Dict[str, Any]:
-        if "boxes" in sample:
-            boxes = sample["boxes"]
+    def forward(self, image, target) -> Dict[str, Any]:
+        if "boxes" in target:
+            boxes = target["boxes"]
 
             w, h = boxes.canvas_size
             scale = torch.tensor([w, h, w, h], dtype=torch.float32)
 
-            sample["nboxes"] = torch.clone(boxes) / scale
-            sample["boxes"] = torch.clone(boxes)
+            target["nboxes"] = torch.clone(boxes) / scale
+            target["boxes"] = torch.clone(boxes)
 
-        return T.Compose([T.Normalize(self.mean, self.std)])(sample)
+        return T.Compose([T.Normalize(self.mean, self.std)])(image, target)
