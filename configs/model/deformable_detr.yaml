@@ -1,9 +1,9 @@
 _target_: models.deformable_detr_module.DeformableDETRModule
 
 optimizer:
-  lr: 0.01
-  lr_backbone: 0.0001
-  lr_drop: 30
+  lr: 0.0001
+  lr_backbone: 0.00001
+  lr_drop: 50
   lr_linear_proj_mult: 0.1
   weight_decay: 0.0001
 
