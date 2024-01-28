@@ -22,7 +22,7 @@ net:
   # backbone
   backbone: resnet50
   dilation: false
-  position_embedding: sine # sine | learned
+  position_embedding: learned # sine | learned
   position_embedding_scale: 6.28318530718 # 2 * pi
   num_feature_levels: 4
 

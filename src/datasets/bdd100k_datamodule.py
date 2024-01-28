@@ -46,18 +46,18 @@ class BDD100KDataModule(LightningDataModule):
             [T.ToTensor(), T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])]
         )
 
-        scales = [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]
+        scales = [480, 512, 544, 576, 608, 640, 672, 704, 736]
 
         self.train_transforms = T.Compose(
             [
                 T.RandomHorizontalFlip(),
                 T.RandomSelect(
-                    T.RandomResize(scales, max_size=1333),
+                    T.RandomResize(scales, max_size=960),
                     T.Compose(
                         [
                             T.RandomResize([400, 500, 600]),
                             T.RandomSizeCrop(384, 600),
-                            T.RandomResize(scales, max_size=1333),
+                            T.RandomResize(scales, max_size=960),
                         ]
                     ),
                 ),
@@ -67,7 +67,7 @@ class BDD100KDataModule(LightningDataModule):
 
         self.transforms = T.Compose(
             [
-                T.RandomResize([800], max_size=1333),
+                T.RandomResize([800], max_size=960),
                 normalize,
             ]
         )
