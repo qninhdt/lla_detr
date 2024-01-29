@@ -10,6 +10,7 @@ from torchvision.tv_tensors import BoundingBoxes
 from tqdm import tqdm
 
 from utils.dataset import Mapping
+from utils.box_ops import box_xyxy_to_cxcywh
 
 CATEGORIES = [
     "bike",
@@ -93,7 +94,8 @@ class BDD100KDataset(Dataset):
         image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.0
 
         boxes = torch.tensor([label["box2d"] for label in label["labels"]])
-        boxes = BoundingBoxes(boxes, format="xyxy", canvas_size=(h, w))
+        boxes = box_xyxy_to_cxcywh(boxes)
+        boxes = BoundingBoxes(boxes, format="cxcywh", canvas_size=(h, w))
         area = boxes[:, 2] * boxes[:, 3]
 
         categories = torch.tensor([obj["category"] for obj in label["labels"]])
