@@ -29,10 +29,12 @@ class DeformableDETRModule(LightningModule):
         self.model, self.criterion, self.postprocessor = net
         self.backbone = self.model.backbone
 
-        iou_thresholds = [0.5 + (i * 0.05) for i in range(10)]
+        # iou_thresholds = [0.5 + (i * 0.05) for i in range(10)]
+        iou_thresholds = [0.5]
 
         # metric objects for calculating mAP across batches
-        self.val_mAP = MeanAveragePrecision("cxcywh", "bbox", iou_thresholds)
+        self.train_mAP = MeanAveragePrecision("xyxy", "bbox", iou_thresholds)
+        self.val_mAP = MeanAveragePrecision("xyxy", "bbox", iou_thresholds)
 
         # for averaging loss across batches
         self.train_loss = MeanMetric()
@@ -80,6 +82,7 @@ class DeformableDETRModule(LightningModule):
         self.train_loss_bbox.update(reduced_losses["loss_bbox"])
         self.train_loss_giou.update(reduced_losses["loss_giou"])
         self.train_class_error.update(reduced_losses["class_error"])
+        self.train_mAP.update(preds, targets)
 
         self.log("train/rt_loss", reduced_loss, prog_bar=True)
         self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
@@ -87,6 +90,9 @@ class DeformableDETRModule(LightningModule):
         return loss
 
     def on_train_epoch_end(self) -> None:
+        metrics = self.train_mAP.compute()
+        metrics = {k: v.to(self.device) for k, v in metrics.items()}
+
         self.log(
             "train/class_error",
             self.train_class_error.compute(),
@@ -109,7 +115,15 @@ class DeformableDETRModule(LightningModule):
             sync_dist=True,
         )
         self.log("train/loss", self.train_loss.compute(), prog_bar=True, sync_dist=True)
+        self.log(
+            "train/mAP_50",
+            metrics["map_50"],
+            prog_bar=True,
+            sync_dist=True,
+        )
+        print(metrics["map_50"])
 
+        self.train_mAP.reset()
         self.train_loss.reset()
         self.train_loss_ce.reset()
         self.train_loss_bbox.reset()
@@ -138,11 +152,12 @@ class DeformableDETRModule(LightningModule):
         metrics = {k: v.to(self.device) for k, v in metrics.items()}
 
         self.log("val/loss", self.val_loss.compute(), prog_bar=True, sync_dist=True)
-        self.log("val/mAP", metrics["map"], prog_bar=True, sync_dist=True)
+        # self.log("val/mAP", metrics["map"], prog_bar=True, sync_dist=True)
         self.log("val/mAP_50", metrics["map_50"], prog_bar=True, sync_dist=True)
-        self.log("val/mAP_75", metrics["map_75"], prog_bar=True, sync_dist=True)
+        # self.log("val/mAP_75", metrics["map_75"], prog_bar=True, sync_dist=True)
 
         self.val_mAP.reset()
+        self.val_loss.reset()
 
     def test_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
