@@ -10,22 +10,18 @@ from torchvision.tv_tensors import BoundingBoxes
 from tqdm import tqdm
 
 from utils.dataset import Mapping
-from utils.box_ops import box_xyxy_to_cxcywh
 
 CATEGORIES = [
-    "bike",
+    "bicycle",
     "bus",
     "car",
-    "motor",
-    "person",
+    "motorcycle",
+    "pedestrian",
     "rider",
     "traffic light",
     "traffic sign",
     "train",
     "truck",
-    "pedestrian",
-    "motorcycle",
-    "bicycle",
 ]
 
 TIMEOFDAY = ["daytime", "dawn/dusk", "night"]

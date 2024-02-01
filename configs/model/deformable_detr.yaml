@@ -11,7 +11,7 @@ optimizer:
 net:
   _target_: models.deformable_detr.build
 
-  num_classes: 16
+  num_classes: 12
 
   # Variants of Deformable DETR
   with_box_refine: false
