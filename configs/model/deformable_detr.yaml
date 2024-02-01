@@ -1,16 +1,17 @@
 _target_: models.deformable_detr_module.DeformableDETRModule
 
 optimizer:
-  lr: 0.0002
-  lr_backbone: 0.00002
-  lr_drop: 30
+  lr: 0.0001
+  lr_backbone: 0.00001
+  lr_drop: 20
+  lr_gamma: 0.5
   lr_linear_proj_mult: 0.1
   weight_decay: 0.0001
 
 net:
   _target_: models.deformable_detr.build
 
-  num_classes: 15
+  num_classes: 16
 
   # Variants of Deformable DETR
   with_box_refine: false

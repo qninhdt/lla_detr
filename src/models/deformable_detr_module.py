@@ -4,8 +4,7 @@ import torch
 from lightning import LightningModule
 
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
-from torchmetrics import PeakSignalNoiseRatio
-from torchmetrics import MaxMetric, MeanMetric
+from torchmetrics import MeanMetric
 
 from .deformable_detr import DeformableDETR, SetCriterion, PostProcess
 from utils.misc import reduce_dict, match_name_keywords
@@ -60,38 +59,40 @@ class DeformableDETRModule(LightningModule):
             losses[k] * weight_dict[k] for k in losses.keys() if k in weight_dict
         )
 
-        reduced_losses = reduce_dict(losses)
-        reduced_scaled_losses = {
-            k: v * weight_dict[k] for k, v in reduced_losses.items() if k in weight_dict
-        }
+        # reduced_losses = reduce_dict(losses)
+        # reduced_scaled_losses = {
+        #     k: v * weight_dict[k] for k, v in reduced_losses.items() if k in weight_dict
+        # }
 
-        reduced_loss = sum(reduced_scaled_losses.values())
+        # reduced_loss = sum(reduced_scaled_losses.values())
 
         preds = self.postprocess(preds, targets)
 
-        return (preds, targets, loss, reduced_loss, reduced_losses)
+        return (preds, targets, loss, losses)
 
     def training_step(
         self, batch: Tuple[torch.Tensor, List[dict]], batch_idx: int
     ) -> torch.Tensor:
-        (preds, targets, loss, reduced_loss, reduced_losses) = self.model_step(batch)
+        (preds, targets, loss, losses) = self.model_step(batch)
 
         # # update and log metrics
-        self.train_loss.update(reduced_loss)
-        self.train_loss_ce.update(reduced_losses["loss_ce"])
-        self.train_loss_bbox.update(reduced_losses["loss_bbox"])
-        self.train_loss_giou.update(reduced_losses["loss_giou"])
-        self.train_class_error.update(reduced_losses["class_error"])
+        self.train_loss.update(loss)
+        self.train_loss_ce.update(losses["loss_ce"])
+        self.train_loss_bbox.update(losses["loss_bbox"])
+        self.train_loss_giou.update(losses["loss_giou"])
+        self.train_class_error.update(losses["class_error"])
         self.train_mAP.update(preds, targets)
 
-        self.log("train/rt_loss", reduced_loss, prog_bar=True)
+        print(self.train_mAP.compute()["map_50"])
+        self.train_mAP.reset()
+
+        self.log("train/rt_loss", loss, prog_bar=True)
         self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
 
         return loss
 
     def on_train_epoch_end(self) -> None:
         metrics = self.train_mAP.compute()
-        metrics = {k: v.to(self.device) for k, v in metrics.items()}
 
         self.log(
             "train/class_error",
@@ -121,7 +122,6 @@ class DeformableDETRModule(LightningModule):
             prog_bar=True,
             sync_dist=True,
         )
-        print(metrics["map_50"])
 
         self.train_mAP.reset()
         self.train_loss.reset()
@@ -141,7 +141,7 @@ class DeformableDETRModule(LightningModule):
     def validation_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> None:
-        preds, targets, loss, _, _ = self.model_step(batch)
+        preds, targets, loss, _ = self.model_step(batch)
 
         # update and log metrics
         self.val_loss.update(loss)
@@ -149,12 +149,9 @@ class DeformableDETRModule(LightningModule):
 
     def on_validation_epoch_end(self) -> None:
         metrics = self.val_mAP.compute()
-        metrics = {k: v.to(self.device) for k, v in metrics.items()}
 
         self.log("val/loss", self.val_loss.compute(), prog_bar=True, sync_dist=True)
-        # self.log("val/mAP", metrics["map"], prog_bar=True, sync_dist=True)
         self.log("val/mAP_50", metrics["map_50"], prog_bar=True, sync_dist=True)
-        # self.log("val/mAP_75", metrics["map_75"], prog_bar=True, sync_dist=True)
 
         self.val_mAP.reset()
         self.val_loss.reset()
@@ -209,7 +206,7 @@ class DeformableDETRModule(LightningModule):
         )
 
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
-            optimizer, self.hparams.optimizer.lr_drop
+            optimizer, self.hparams.optimizer.lr_drop, self.hparams.optimizer.lr_gamma
         )
 
         return {"optimizer": optimizer, "lr_scheduler": lr_scheduler}

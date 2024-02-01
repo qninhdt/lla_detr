@@ -93,11 +93,15 @@ class BDD100KDataset(Dataset):
         # convert to tensor
         image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.0
 
-        boxes = torch.tensor([label["box2d"] for label in label["labels"]])
+        boxes = torch.tensor(
+            [label["box2d"] for label in label["labels"]], dtype=torch.float32
+        )
         boxes = BoundingBoxes(boxes, format="xyxy", canvas_size=(h, w))
         area = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
 
-        categories = torch.tensor([obj["category"] for obj in label["labels"]])
+        categories = torch.tensor(
+            [obj["category"] for obj in label["labels"]], dtype=torch.int64
+        )
         timeofday = label["timeofday"]
         name = label["name"]
 
