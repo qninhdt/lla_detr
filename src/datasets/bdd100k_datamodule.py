@@ -13,7 +13,7 @@ from utils.transform import Normalize
 
 from .bdd100k import BDD100KDataset
 
-IMAGE_SIZE = (540, 960)
+IMAGE_SIZE = (720, 1280)
 
 
 class BDD100KDataModule(LightningDataModule):
@@ -69,12 +69,12 @@ class BDD100KDataModule(LightningDataModule):
             [
                 T.RandomHorizontalFlip(),
                 T.RandomSelect(
-                    T.RandomResize(scales, max_size=960),
+                    T.RandomResize(scales, max_size=1333),
                     T.Compose(
                         [
                             T.RandomResize([400, 500, 600]),
                             T.RandomSizeCrop(384, 600),
-                            T.RandomResize(scales, max_size=960),
+                            T.RandomResize(scales, max_size=1333),
                         ]
                     ),
                 ),
