@@ -81,12 +81,10 @@ class DeformableDETRModule(LightningModule):
         self.train_loss_giou.update(losses["loss_giou"])
         self.train_class_error.update(losses["class_error"])
 
-        if self.global_step % 100 == 0:
-            self.log("train/rt_loss", loss, prog_bar=True)
-            self.log(
-                "lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True
-            )
+        self.log("train/rt_loss", loss, prog_bar=True)
+        self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
 
+        if self.global_step % 100 == 0:
             self.log(
                 "train/class_error",
                 self.train_class_error.compute(),
