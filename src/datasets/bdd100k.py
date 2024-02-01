@@ -12,11 +12,11 @@ from tqdm import tqdm
 from utils.dataset import Mapping
 
 CATEGORIES = [
-    "bicycle",
+    "bike",
     "bus",
     "car",
-    "motorcycle",
-    "pedestrian",
+    "motor",
+    "person",
     "rider",
     "traffic light",
     "traffic sign",
