@@ -69,12 +69,12 @@ class BDD100KDataModule(LightningDataModule):
             [
                 T.RandomHorizontalFlip(),
                 T.RandomSelect(
-                    T.RandomResize(scales, max_size=1333),
+                    T.RandomResize(scales, max_size=960),
                     T.Compose(
                         [
                             T.RandomResize([400, 500, 600]),
                             T.RandomSizeCrop(384, 600),
-                            T.RandomResize(scales, max_size=1333),
+                            T.RandomResize(scales, max_size=960),
                         ]
                     ),
                 ),
