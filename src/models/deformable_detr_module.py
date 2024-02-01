@@ -74,60 +74,54 @@ class DeformableDETRModule(LightningModule):
     ) -> torch.Tensor:
         (preds, targets, loss, losses) = self.model_step(batch)
 
-        # # update and log metrics
+        # update and log metrics
         self.train_loss.update(loss)
         self.train_loss_ce.update(losses["loss_ce"])
         self.train_loss_bbox.update(losses["loss_bbox"])
         self.train_loss_giou.update(losses["loss_giou"])
         self.train_class_error.update(losses["class_error"])
-        # self.train_mAP.update(preds, targets)
 
-        # print(self.train_mAP.compute()["map_50"])
-        # self.train_mAP.reset()
+        if self.global_step % 100 == 0:
+            self.log("train/rt_loss", loss, prog_bar=True)
+            self.log(
+                "lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True
+            )
 
-        self.log("train/rt_loss", loss, prog_bar=True)
-        self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
+            self.log(
+                "train/class_error",
+                self.train_class_error.compute(),
+                prog_bar=True,
+                sync_dist=True,
+            )
+            self.log(
+                "train/loss_ce",
+                self.train_loss_ce.compute(),
+                prog_bar=True,
+                sync_dist=True,
+            )
+            self.log(
+                "train/loss_bbox",
+                self.train_loss_bbox.compute(),
+                prog_bar=True,
+                sync_dist=True,
+            )
+            self.log(
+                "train/loss_giou",
+                self.train_loss_giou.compute(),
+                prog_bar=True,
+                sync_dist=True,
+            )
+            self.log(
+                "train/loss", self.train_loss.compute(), prog_bar=True, sync_dist=True
+            )
+
+            self.train_loss.reset()
+            self.train_loss_ce.reset()
+            self.train_loss_bbox.reset()
+            self.train_loss_giou.reset()
+            self.train_class_error.reset()
 
         return loss
-
-    def on_train_epoch_end(self) -> None:
-        # metrics = self.train_mAP.compute()
-
-        self.log(
-            "train/class_error",
-            self.train_class_error.compute(),
-            prog_bar=True,
-            sync_dist=True,
-        )
-        self.log(
-            "train/loss_ce", self.train_loss_ce.compute(), prog_bar=True, sync_dist=True
-        )
-        self.log(
-            "train/loss_bbox",
-            self.train_loss_bbox.compute(),
-            prog_bar=True,
-            sync_dist=True,
-        )
-        self.log(
-            "train/loss_giou",
-            self.train_loss_giou.compute(),
-            prog_bar=True,
-            sync_dist=True,
-        )
-        self.log("train/loss", self.train_loss.compute(), prog_bar=True, sync_dist=True)
-        # self.log(
-        #     "train/mAP_50",
-        #     metrics["map_50"],
-        #     prog_bar=True,
-        #     sync_dist=True,
-        # )
-
-        # self.train_mAP.reset()
-        self.train_loss.reset()
-        self.train_loss_ce.reset()
-        self.train_loss_bbox.reset()
-        self.train_loss_giou.reset()
-        self.train_class_error.reset()
 
     def postprocess(self, preds: torch.Tensor, targets: dict) -> None:
         target_sizes = torch.tensor(
