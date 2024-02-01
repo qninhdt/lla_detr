@@ -4,9 +4,9 @@ import torch
 from lightning import LightningDataModule
 from torch.utils.data import DataLoader, Dataset, random_split
 
-from torchvision.transforms import v2 as T
+# from torchvision.transforms import v2 as T
 
-# import utils.transforms as T
+import utils.transforms as T
 from utils.dataset import ApplyTransform
 from utils.misc import nested_tensor_from_tensor_list
 from utils.transform import Normalize
@@ -42,55 +42,55 @@ class BDD100KDataModule(LightningDataModule):
         self.val_dataset: Optional[Dataset] = None
         self.data_test: Optional[Dataset] = None
 
-        normalize = Normalize(std=[0.229, 0.224, 0.225], mean=[0.485, 0.456, 0.406])
-
-        self.train_transforms = T.Compose(
-            [
-                T.RandomHorizontalFlip(p=0.5),
-                T.Resize(IMAGE_SIZE, antialias=True),
-                normalize,
-            ]
-        )
-
-        self.transforms = T.Compose(
-            [
-                T.Resize(IMAGE_SIZE, antialias=True),
-                normalize,
-            ]
-        )
-
-        # normalize = T.Compose(
-        #     [T.ToTensor(), T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])]
-        # )
-
-        # scales = [480, 512, 544, 576, 608, 640, 672, 704, 736]
+        # normalize = Normalize(std=[0.229, 0.224, 0.225], mean=[0.485, 0.456, 0.406])
 
         # self.train_transforms = T.Compose(
         #     [
-        #         T.RandomHorizontalFlip(),
-        #         T.RandomSelect(
-        #             T.RandomResize(scales, max_size=960),
-        #             T.Compose(
-        #                 [
-        #                     T.RandomResize([400, 500, 600]),
-        #                     T.RandomSizeCrop(384, 600),
-        #                     T.RandomResize(scales, max_size=960),
-        #                 ]
-        #             ),
-        #         ),
+        #         T.RandomHorizontalFlip(p=0.5),
+        #         T.Resize(IMAGE_SIZE, antialias=True),
         #         normalize,
         #     ]
         # )
 
         # self.transforms = T.Compose(
         #     [
-        #         T.RandomResize([800], max_size=960),
+        #         T.Resize(IMAGE_SIZE, antialias=True),
         #         normalize,
         #     ]
         # )
 
+        normalize = T.Compose(
+            [T.ToTensor(), T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])]
+        )
+
+        scales = [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]
+
+        self.train_transforms = T.Compose(
+            [
+                T.RandomHorizontalFlip(),
+                T.RandomSelect(
+                    T.RandomResize(scales, max_size=1333),
+                    T.Compose(
+                        [
+                            T.RandomResize([400, 500, 600]),
+                            T.RandomSizeCrop(384, 600),
+                            T.RandomResize(scales, max_size=1333),
+                        ]
+                    ),
+                ),
+                normalize,
+            ]
+        )
+
+        self.transforms = T.Compose(
+            [
+                T.RandomResize([800], max_size=960),
+                normalize,
+            ]
+        )
+
     @property
-    def num_classes(sesamplelf) -> int:
+    def num_classes(self) -> int:
         return self.dataset.num_classes()
 
     def prepare_data(self) -> None:

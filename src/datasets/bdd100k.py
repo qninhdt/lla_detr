@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import torch
-import cv2
+from PIL import Image
 from torch.utils.data import Dataset
 from torchvision.tv_tensors import BoundingBoxes
 from tqdm import tqdm
@@ -86,12 +86,8 @@ class BDD100KDataset(Dataset):
     def __getitem__(self, idx: int) -> dict:
         label = self.labels[idx]
 
-        image = cv2.imread(str(self.dir / f"images/100k/{self.type}/{label['name']}"))
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        h, w, _ = image.shape
-
-        # convert to tensor
-        image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.0
+        image = Image.open(self.dir / f"images/100k/{self.type}/{label['name']}")
+        w, h = image.size
 
         boxes = torch.tensor(
             [label["box2d"] for label in label["labels"]], dtype=torch.float32

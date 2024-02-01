@@ -2,7 +2,6 @@ from typing import Any, Dict, Tuple, List
 
 import torch
 from lightning import LightningModule
-
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from torchmetrics import MeanMetric
 
@@ -32,7 +31,7 @@ class DeformableDETRModule(LightningModule):
         iou_thresholds = [0.5]
 
         # metric objects for calculating mAP across batches
-        self.train_mAP = MeanAveragePrecision("xyxy", "bbox", iou_thresholds)
+        # self.train_mAP = MeanAveragePrecision("xyxy", "bbox", iou_thresholds)
         self.val_mAP = MeanAveragePrecision("xyxy", "bbox", iou_thresholds)
 
         # for averaging loss across batches
@@ -81,10 +80,10 @@ class DeformableDETRModule(LightningModule):
         self.train_loss_bbox.update(losses["loss_bbox"])
         self.train_loss_giou.update(losses["loss_giou"])
         self.train_class_error.update(losses["class_error"])
-        self.train_mAP.update(preds, targets)
+        # self.train_mAP.update(preds, targets)
 
-        print(self.train_mAP.compute()["map_50"])
-        self.train_mAP.reset()
+        # print(self.train_mAP.compute()["map_50"])
+        # self.train_mAP.reset()
 
         self.log("train/rt_loss", loss, prog_bar=True)
         self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
@@ -92,7 +91,7 @@ class DeformableDETRModule(LightningModule):
         return loss
 
     def on_train_epoch_end(self) -> None:
-        metrics = self.train_mAP.compute()
+        # metrics = self.train_mAP.compute()
 
         self.log(
             "train/class_error",
@@ -116,14 +115,14 @@ class DeformableDETRModule(LightningModule):
             sync_dist=True,
         )
         self.log("train/loss", self.train_loss.compute(), prog_bar=True, sync_dist=True)
-        self.log(
-            "train/mAP_50",
-            metrics["map_50"],
-            prog_bar=True,
-            sync_dist=True,
-        )
+        # self.log(
+        #     "train/mAP_50",
+        #     metrics["map_50"],
+        #     prog_bar=True,
+        #     sync_dist=True,
+        # )
 
-        self.train_mAP.reset()
+        # self.train_mAP.reset()
         self.train_loss.reset()
         self.train_loss_ce.reset()
         self.train_loss_bbox.reset()
