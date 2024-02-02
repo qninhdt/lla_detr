@@ -140,6 +140,7 @@ class DeformableDETRModule(LightningModule):
 
     def on_validation_epoch_end(self) -> None:
         metrics = self.val_mAP.compute()
+        metrics = {k: v.to(self.device) for k, v in metrics.items()}
 
         self.log("val/loss", self.val_loss.compute(), prog_bar=True, sync_dist=True)
         self.log("val/mAP_50", metrics["map_50"], prog_bar=True, sync_dist=True)

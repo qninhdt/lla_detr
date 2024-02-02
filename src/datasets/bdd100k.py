@@ -80,7 +80,7 @@ class BDD100KDataset(Dataset):
                 self.labels.append(sample)
 
     def __getitem__(self, idx: int) -> dict:
-        label = self.labels[len(self.labels) - idx - 1]
+        label = self.labels[idx]
 
         image = cv2.imread(str(self.dir / f"images/100k/{self.type}/{label['name']}"))
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
