@@ -1,5 +1,7 @@
 from typing import Any, Dict, Tuple, List
 
+from time import time
+
 import torch
 from lightning import LightningModule
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
@@ -42,6 +44,8 @@ class DeformableDETRModule(LightningModule):
         self.train_class_error = MeanMetric()
         self.val_loss = MeanMetric()
 
+        self.training_speed = MeanMetric()
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)
 
@@ -72,6 +76,8 @@ class DeformableDETRModule(LightningModule):
     def training_step(
         self, batch: Tuple[torch.Tensor, List[dict]], batch_idx: int
     ) -> torch.Tensor:
+        start = time()
+
         (preds, targets, loss, losses) = self.model_step(batch)
 
         # update and log metrics
@@ -80,6 +86,7 @@ class DeformableDETRModule(LightningModule):
         self.train_loss_bbox.update(losses["loss_bbox"])
         self.train_loss_giou.update(losses["loss_giou"])
         self.train_class_error.update(losses["class_error"])
+        self.training_speed.update(1.0 / (time() - start))
 
         self.log("train/rt_loss", loss, prog_bar=True)
         self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
@@ -112,12 +119,19 @@ class DeformableDETRModule(LightningModule):
             self.log(
                 "train/loss", self.train_loss.compute(), prog_bar=True, sync_dist=True
             )
+            self.log(
+                "train/speed",
+                self.training_speed.compute(),
+                prog_bar=True,
+                sync_dist=True,
+            )
 
             self.train_loss.reset()
             self.train_loss_ce.reset()
             self.train_loss_bbox.reset()
             self.train_loss_giou.reset()
             self.train_class_error.reset()
+            self.training_speed.reset()
 
         return loss
 
