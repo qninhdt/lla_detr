@@ -122,7 +122,7 @@ class DeformableDETRModule(LightningModule):
             self.log(
                 "train/speed",
                 self.training_speed.compute(),
-                prog_bar=True,
+                prog_bar=False,
                 sync_dist=True,
             )
 
