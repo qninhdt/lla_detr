@@ -11,9 +11,7 @@ from utils.dataset import ApplyTransform
 from utils.misc import nested_tensor_from_tensor_list
 from utils.transform import Normalize
 
-from .bdd100k import BDD100KDataset
-
-IMAGE_SIZE = (480, 853)
+from .bdd100k import BDD100KDataset, IMAGE_SIZE
 
 
 class BDD100KDataModule(LightningDataModule):
@@ -46,21 +44,12 @@ class BDD100KDataModule(LightningDataModule):
 
         self.train_transforms = T.Compose(
             [
-                # T.RandomResizedCrop(
-                #     IMAGE_SIZE,
-                #     scale=(0.125, 1.0),
-                #     ratio=(
-                #         IMAGE_SIZE[1] / IMAGE_SIZE[0],
-                #         IMAGE_SIZE[1] / IMAGE_SIZE[0],
-                #     ),
-                #     antialias=True,
-                # ),
-                T.RandomHorizontalFlip(p=0.5),
                 T.Resize(
                     IMAGE_SIZE,
                     antialias=True,
                     interpolation=T.InterpolationMode.BILINEAR,
                 ),
+                T.RandomHorizontalFlip(p=0.5),
                 normalize,
             ]
         )

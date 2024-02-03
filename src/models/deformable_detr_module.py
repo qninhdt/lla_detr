@@ -54,6 +54,7 @@ class DeformableDETRModule(LightningModule):
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         images, targets = batch
         preds = self.forward(images)
+
         losses = self.criterion(preds, targets)
 
         weight_dict = self.criterion.weight_dict

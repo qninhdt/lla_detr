@@ -11,6 +11,8 @@ from tqdm import tqdm
 
 from utils.dataset import Mapping
 
+IMAGE_SIZE = (480, 853)
+
 CATEGORIES = [
     "bike",
     "bus",
@@ -107,7 +109,7 @@ class BDD100KDataset(Dataset):
             "labels": categories,
             "timeofday": timeofday,
             "area": area,
-            "orig_size": (h, w),
+            "orig_size": IMAGE_SIZE,
         }
 
         return image, target

@@ -17,7 +17,7 @@ class Normalize(nn.Module):
             boxes = target["boxes"]
 
             h, w = boxes.canvas_size
-            scale = torch.tensor([w, h, w, h], dtype=torch.float32)
+            scale = torch.tensor([w, h, w, h], dtype=torch.float32)[None, :]
 
             target["boxes"] = torch.clone(boxes).to(torch.float32)
             target["nboxes"] = box_xyxy_to_cxcywh(boxes / scale)
