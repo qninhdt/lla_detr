@@ -43,6 +43,10 @@ class DeformableDETRModule(LightningModule):
         self.train_loss_giou = MeanMetric()
         self.train_class_error = MeanMetric()
         self.val_loss = MeanMetric()
+        self.val_loss_ce = MeanMetric()
+        self.val_loss_bbox = MeanMetric()
+        self.val_loss_giou = MeanMetric()
+        self.val_class_error = MeanMetric()
 
         self.training_speed = MeanMetric()
 
@@ -146,11 +150,15 @@ class DeformableDETRModule(LightningModule):
     def validation_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> None:
-        preds, targets, loss, _ = self.model_step(batch)
+        preds, targets, loss, losses = self.model_step(batch)
 
         # update and log metrics
         self.val_loss.update(loss)
         self.val_mAP.update(preds, targets)
+        self.val_loss_ce.update(losses["loss_ce"])
+        self.val_loss_bbox.update(losses["loss_bbox"])
+        self.val_loss_giou.update(losses["loss_giou"])
+        self.val_class_error.update(losses["class_error"])
 
     def on_validation_epoch_end(self) -> None:
         metrics = self.val_mAP.compute()
@@ -159,8 +167,37 @@ class DeformableDETRModule(LightningModule):
         self.log("val/loss", self.val_loss.compute(), prog_bar=True, sync_dist=True)
         self.log("val/mAP_50", metrics["map_50"], prog_bar=True, sync_dist=True)
 
+        self.log(
+            "val/class_error",
+            self.val_class_error.compute(),
+            prog_bar=True,
+            sync_dist=True,
+        )
+        self.log(
+            "val/loss_ce",
+            self.val_loss_ce.compute(),
+            prog_bar=True,
+            sync_dist=True,
+        )
+        self.log(
+            "val/loss_bbox",
+            self.val_loss_bbox.compute(),
+            prog_bar=True,
+            sync_dist=True,
+        )
+        self.log(
+            "val/loss_giou",
+            self.val_loss_giou.compute(),
+            prog_bar=True,
+            sync_dist=True,
+        )
+
         self.val_mAP.reset()
         self.val_loss.reset()
+        self.val_loss_ce.reset()
+        self.val_loss_bbox.reset()
+        self.val_loss_giou.reset()
+        self.val_class_error.reset()
 
     def test_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
