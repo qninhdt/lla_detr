@@ -59,7 +59,7 @@ class BDD100KDataModule(LightningDataModule):
                 T.Resize(
                     IMAGE_SIZE,
                     antialias=True,
-                    interpolation=T.InterpolationMode.NEAREST,
+                    interpolation=T.InterpolationMode.BILINEAR,
                 ),
                 normalize,
             ]
