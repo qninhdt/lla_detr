@@ -11,7 +11,9 @@ from tqdm import tqdm
 
 from utils.dataset import Mapping
 
-IMAGE_SIZE = (480, 853)
+# IMAGE_SIZE = (720, 1280)
+IMAGE_SIZE = (540, 960)
+# IMAGE_SIZE = (480, 853)
 
 CATEGORIES = [
     "bike",
@@ -26,7 +28,17 @@ CATEGORIES = [
     "truck",
 ]
 
-TIMEOFDAY = ["daytime", "dawn/dusk", "night"]
+TIMEOFDAY = ["daytime", "dawn/dusk", "night", "undefined"]
+
+WEATHERS = [
+    "clear",
+    "partly cloudy",
+    "overcast",
+    "rainy",
+    "snowy",
+    "foggy",
+    "undefined",
+]
 
 
 class BDD100KDataset(Dataset):
@@ -100,7 +112,7 @@ class BDD100KDataset(Dataset):
         categories = torch.tensor(
             [obj["category"] for obj in label["labels"]], dtype=torch.int64
         )
-        timeofday = label["timeofday"]
+        timeofday = torch.tensor(label["timeofday"], dtype=torch.int64)
         name = label["name"]
 
         target = {

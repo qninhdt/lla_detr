@@ -18,9 +18,9 @@ log = RankedLogger(__name__, rank_zero_only=True)
 class DeformableDETRModule(LightningModule):
     def __init__(
         self,
-        net: Tuple[DeformableDETR, SetCriterion, PostProcess],
-        optimizer: Dict[str, Any],
-        compile: bool,
+        net: Tuple[DeformableDETR, SetCriterion, PostProcess] = None,
+        optimizer: Dict[str, Any] = None,
+        compile: bool = False,
     ) -> None:
         super().__init__()
 

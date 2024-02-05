@@ -42,14 +42,42 @@ class BDD100KDataModule(LightningDataModule):
 
         normalize = Normalize(std=[0.229, 0.224, 0.225], mean=[0.485, 0.456, 0.406])
 
+        sizes = [
+            (IMAGE_SIZE[0] // 2, IMAGE_SIZE[1] // 2),
+            (IMAGE_SIZE[0] // 4, IMAGE_SIZE[1] // 4),
+            (IMAGE_SIZE[0] * 2 // 3, IMAGE_SIZE[1] * 2 // 3),
+        ]
+
         self.train_transforms = T.Compose(
             [
+                T.RandomHorizontalFlip(p=0.5),
+                T.RandomApply(
+                    [
+                        T.RandomChoice(
+                            [
+                                T.RandomResizedCrop(
+                                    IMAGE_SIZE,
+                                    scale=(0.1, 0.667),
+                                    ratio=(
+                                        IMAGE_SIZE[1] / IMAGE_SIZE[0],
+                                        IMAGE_SIZE[1] / IMAGE_SIZE[0],
+                                    ),
+                                    antialias=True,
+                                ),
+                                T.CenterCrop(sizes[0]),
+                                T.CenterCrop(sizes[1]),
+                                T.CenterCrop(sizes[2]),
+                            ],
+                            p=[0.4, 0.2, 0.2, 0.2],
+                        )
+                    ],
+                    p=0.75,
+                ),
                 T.Resize(
                     IMAGE_SIZE,
                     antialias=True,
                     interpolation=T.InterpolationMode.BILINEAR,
                 ),
-                T.RandomHorizontalFlip(p=0.5),
                 normalize,
             ]
         )
