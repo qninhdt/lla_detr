@@ -9,11 +9,12 @@ optimizer:
   weight_decay: 0.0001
 
 net:
-  _target_: models.deformable_detr.build
+  _target_: models.wa_detr.build
 
   num_classes: 12
 
-  # Variants of Deformable DETR
+  num_embeddings: 8
+
   with_box_refine: false
   two_stage: false
 

@@ -20,9 +20,10 @@ from torchvision.models._utils import IntermediateLayerGetter
 from torchvision.models.resnet import ResNet50_Weights
 from typing import Dict, List
 
-from utils.misc import NestedTensor, is_main_process
+from utils.misc import NestedTensor
 
 from .position_encoding import build_position_encoding
+from .lla_cnn_block import LowLightApdaptiveCNNBlock
 
 
 class FrozenBatchNorm2d(torch.nn.Module):
@@ -136,6 +137,40 @@ class Backbone(BackboneBase):
             self.strides[-1] = self.strides[-1] // 2
 
 
+class LLABackbone(Backbone):
+    def __init__(
+        self,
+        name: str,
+        train_backbone: bool,
+        return_interm_layers: bool,
+        dilation: bool,
+        num_embeddings: int,
+    ):
+        super().__init__(name, train_backbone, return_interm_layers, dilation)
+
+        self.lla_cnn_blocks = nn.ModuleList(
+            [
+                LowLightApdaptiveCNNBlock(
+                    in_channels,
+                    in_channels,
+                    kernel_size=3,
+                    stride=1,
+                    padding=1,
+                    num_embeddings=num_embeddings,
+                )
+                for in_channels in self.num_channels
+            ]
+        )
+
+    def forward(self, tensor_list: NestedTensor):
+        out = super().forward(tensor_list)
+
+        for name, feat in out.items():
+            feat.tensors = self.lla_cnn_blocks[int(name)](feat.tensors)
+
+        return out
+
+
 class Joiner(nn.Sequential):
     def __init__(self, backbone, position_embedding):
         super().__init__(backbone, position_embedding)
@@ -160,5 +195,15 @@ def build_backbone(args):
     position_embedding = build_position_encoding(args)
     return_interm_layers = args.num_feature_levels > 1
     backbone = Backbone(args.backbone, True, return_interm_layers, args.dilation)
+    model = Joiner(backbone, position_embedding)
+    return model
+
+
+def build_lla_backbone(args):
+    position_embedding = build_position_encoding(args)
+    return_interm_layers = args.num_feature_levels > 1
+    backbone = LLABackbone(
+        args.backbone, True, return_interm_layers, args.dilation, args.num_embeddings
+    )
     model = Joiner(backbone, position_embedding)
     return model

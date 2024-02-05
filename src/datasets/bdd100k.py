@@ -11,10 +11,6 @@ from tqdm import tqdm
 
 from utils.dataset import Mapping
 
-# IMAGE_SIZE = (720, 1280)
-IMAGE_SIZE = (540, 960)
-# IMAGE_SIZE = (480, 853)
-
 CATEGORIES = [
     "bike",
     "bus",
@@ -50,6 +46,7 @@ class BDD100KDataset(Dataset):
             "train",
             "val",
         ] = "train",
+        image_size=(720, 1280),
     ) -> None:
         super().__init__()
 
@@ -58,6 +55,8 @@ class BDD100KDataset(Dataset):
         self.version = version
         self.categories = Mapping(CATEGORIES)
         self.timeofday = Mapping(TIMEOFDAY)
+        self.weather = Mapping(WEATHERS)
+        self.image_size = image_size
 
         self.load_labels()
 
@@ -121,7 +120,7 @@ class BDD100KDataset(Dataset):
             "labels": categories,
             "timeofday": timeofday,
             "area": area,
-            "orig_size": IMAGE_SIZE,
+            "orig_size": self.image_size,
         }
 
         return image, target

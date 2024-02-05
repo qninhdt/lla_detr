@@ -11,7 +11,7 @@ from utils.dataset import ApplyTransform
 from utils.misc import nested_tensor_from_tensor_list
 from utils.transform import Normalize
 
-from .bdd100k import BDD100KDataset, IMAGE_SIZE
+from .bdd100k import BDD100KDataset
 
 
 class BDD100KDataModule(LightningDataModule):
@@ -23,6 +23,7 @@ class BDD100KDataModule(LightningDataModule):
         batch_size: int,
         num_workers: int,
         pin_memory: bool,
+        image_size: Tuple[int, int],
     ) -> None:
         super().__init__()
 
@@ -39,13 +40,14 @@ class BDD100KDataModule(LightningDataModule):
         self.train_dataset: Optional[Dataset] = None
         self.val_dataset: Optional[Dataset] = None
         self.data_test: Optional[Dataset] = None
+        self.image_size = (image_size[0], image_size[1])
 
         normalize = Normalize(std=[0.229, 0.224, 0.225], mean=[0.485, 0.456, 0.406])
 
         sizes = [
-            (IMAGE_SIZE[0] // 2, IMAGE_SIZE[1] // 2),
-            (IMAGE_SIZE[0] // 4, IMAGE_SIZE[1] // 4),
-            (IMAGE_SIZE[0] * 2 // 3, IMAGE_SIZE[1] * 2 // 3),
+            (self.image_size[0] // 2, self.image_size[1] // 2),
+            (self.image_size[0] // 4, self.image_size[1] // 4),
+            (self.image_size[0] * 2 // 3, self.image_size[1] * 2 // 3),
         ]
 
         self.train_transforms = T.Compose(
@@ -56,11 +58,11 @@ class BDD100KDataModule(LightningDataModule):
                         T.RandomChoice(
                             [
                                 T.RandomResizedCrop(
-                                    IMAGE_SIZE,
+                                    self.image_size,
                                     scale=(0.1, 0.667),
                                     ratio=(
-                                        IMAGE_SIZE[1] / IMAGE_SIZE[0],
-                                        IMAGE_SIZE[1] / IMAGE_SIZE[0],
+                                        self.image_size[1] / self.image_size[0],
+                                        self.image_size[1] / self.image_size[0],
                                     ),
                                     antialias=True,
                                 ),
@@ -74,7 +76,7 @@ class BDD100KDataModule(LightningDataModule):
                     p=0.75,
                 ),
                 T.Resize(
-                    IMAGE_SIZE,
+                    self.image_size,
                     antialias=True,
                     interpolation=T.InterpolationMode.BILINEAR,
                 ),
@@ -84,7 +86,7 @@ class BDD100KDataModule(LightningDataModule):
 
         self.transforms = T.Compose(
             [
-                T.Resize(IMAGE_SIZE, antialias=True),
+                T.Resize(self.image_size, antialias=True),
                 normalize,
             ]
         )
@@ -135,8 +137,12 @@ class BDD100KDataModule(LightningDataModule):
             self.batch_size_per_device = self.batch_size // self.trainer.world_size
 
         if not self.train_dataset and not self.val_dataset and not self.data_test:
-            self.train_dataset = BDD100KDataset(self.dir, self.version, "train")
-            self.val_dataset = BDD100KDataset(self.dir, self.version, "val")
+            self.train_dataset = BDD100KDataset(
+                self.dir, self.version, "train", self.image_size
+            )
+            self.val_dataset = BDD100KDataset(
+                self.dir, self.version, "val", self.image_size
+            )
 
             if self.limit < 1:
                 train_size = int(self.limit * len(self.train_dataset))
