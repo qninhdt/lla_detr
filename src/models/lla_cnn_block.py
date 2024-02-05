@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.nn.init as init
+import math
 
 
 class LowLightApdaptiveCNNBlock(nn.Module):
@@ -29,6 +31,15 @@ class LowLightApdaptiveCNNBlock(nn.Module):
         )
         self.cls_bn = nn.BatchNorm2d(in_channels)
         self.cls_dense = nn.Linear(in_channels, num_embeddings)
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        for i in range(self.num_embeddings):
+            init.kaiming_uniform_(self.kernal_embed[:, i], a=math.sqrt(5))
+            fan_in, _ = init._calculate_fan_in_and_fan_out(self.kernal_embed[:, i])
+            bound = 1 / math.sqrt(fan_in)
+            init.uniform_(self.bias_embed[:, i], -bound, bound)
 
     def forward(self, x: torch.Tensor):
         assert x.shape[1] == self.in_channels, f"Expected {self.in_channels} channels"
@@ -63,7 +74,7 @@ class LowLightApdaptiveCNNBlock(nn.Module):
             output.append(o)
 
         output = torch.stack(output, dim=0)
-        output = self.bn(output)
+        output = self.bn(output) + x
         output = F.relu(output)
 
         return output
