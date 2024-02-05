@@ -102,6 +102,8 @@ class HungarianMatcher(nn.Module):
                 + self.cost_giou * cost_giou
             )
             C = C.view(bs, num_queries, -1).cpu()
+            C[C.isnan()] = 1e6
+            C[C.isinf()] = 1e6
 
             sizes = [len(v["nboxes"]) for v in targets]
             indices = [

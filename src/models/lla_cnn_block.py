@@ -74,7 +74,7 @@ class LowLightApdaptiveCNNBlock(nn.Module):
             output.append(o)
 
         output = torch.stack(output, dim=0)
-        output = self.bn(output) + x
+        output = self.bn(output)
         output = F.relu(output)
 
         return output
