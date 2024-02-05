@@ -1,4 +1,4 @@
-_target_: models.deformable_detr_module.DeformableDETRModule
+_target_: models.wa_detr_module.WADETRModule
 
 optimizer:
   lr: 0.0002
