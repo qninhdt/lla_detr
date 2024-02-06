@@ -53,7 +53,7 @@ class BDD100KDataModule(LightningDataModule):
                 A.RandomResizedCrop(
                     self.image_size[0],
                     self.image_size[1],
-                    scale=(0.075, 1),
+                    scale=(0.05, 1),
                     ratio=(
                         self.image_size[1] / self.image_size[0],
                         self.image_size[1] / self.image_size[0],
