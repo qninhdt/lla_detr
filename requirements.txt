@@ -10,4 +10,5 @@ wandb
 rich
 pandas
 matplotlib
-pillow
+opencv-python
+albumentations

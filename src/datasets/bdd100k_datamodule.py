@@ -4,9 +4,9 @@ import torch
 from lightning import LightningDataModule
 from torch.utils.data import DataLoader, Dataset, random_split
 
-from torchvision.transforms import v2 as T
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
 
-# import utils.transforms as T
 from utils.dataset import ApplyTransform
 from utils.misc import nested_tensor_from_tensor_list
 from utils.transform import Normalize
@@ -42,53 +42,37 @@ class BDD100KDataModule(LightningDataModule):
         self.data_test: Optional[Dataset] = None
         self.image_size = (image_size[0], image_size[1])
 
-        normalize = Normalize(std=[0.229, 0.224, 0.225], mean=[0.485, 0.456, 0.406])
-
-        sizes = [
-            (self.image_size[0] // 2, self.image_size[1] // 2),
-            (self.image_size[0] // 4, self.image_size[1] // 4),
-            (self.image_size[0] * 2 // 3, self.image_size[1] * 2 // 3),
-        ]
-
-        self.train_transforms = T.Compose(
-            [
-                T.RandomHorizontalFlip(p=0.5),
-                # T.RandomApply(
-                #     [
-                #         T.RandomChoice(
-                #             [
-                #                 T.RandomResizedCrop(
-                #                     self.image_size,
-                #                     scale=(0.1, 0.667),
-                #                     ratio=(
-                #                         self.image_size[1] / self.image_size[0],
-                #                         self.image_size[1] / self.image_size[0],
-                #                     ),
-                #                     antialias=True,
-                #                 ),
-                #                 T.CenterCrop(sizes[0]),
-                #                 T.CenterCrop(sizes[1]),
-                #                 T.CenterCrop(sizes[2]),
-                #             ],
-                #             p=[0.4, 0.2, 0.2, 0.2],
-                #         )
-                #     ],
-                #     p=0.75,
-                # ),
-                T.Resize(
-                    self.image_size,
-                    antialias=True,
-                    interpolation=T.InterpolationMode.BILINEAR,
-                ),
-                normalize,
-            ]
+        bbox_params = A.BboxParams(
+            format="pascal_voc", label_fields=["labels"], min_visibility=0.3
         )
 
-        self.transforms = T.Compose(
+        self.train_transforms = A.Compose(
             [
-                T.Resize(self.image_size, antialias=True),
-                normalize,
-            ]
+                A.HorizontalFlip(p=0.5),
+                A.Resize(self.image_size[0], self.image_size[1]),
+                A.RandomResizedCrop(
+                    self.image_size[0],
+                    self.image_size[1],
+                    scale=(0.075, 1),
+                    ratio=(
+                        self.image_size[1] / self.image_size[0],
+                        self.image_size[1] / self.image_size[0],
+                    ),
+                    p=0.75,
+                ),
+                A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                ToTensorV2(),
+            ],
+            bbox_params=bbox_params,
+        )
+
+        self.transforms = A.Compose(
+            [
+                A.Resize(self.image_size[0], self.image_size[1]),
+                A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                ToTensorV2(),
+            ],
+            bbox_params=bbox_params,
         )
 
         # normalize = T.Compose(

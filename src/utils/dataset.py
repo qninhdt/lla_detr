@@ -1,7 +1,9 @@
 from typing import List
 
+import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
+from utils.box_ops import box_xyxy_to_cxcywh
 
 
 class Mapping:
@@ -34,7 +36,21 @@ class ApplyTransform(Dataset):
 
     def __getitem__(self, idx: int) -> dict:
         image, target = self.dataset[idx]
-        image, target = self.transform(image, target)
+
+        while True:
+            output = self.transform(
+                image=image, bboxes=target["boxes"], labels=target["labels"]
+            )
+            if len(output["bboxes"]) > 0:
+                break
+
+        image = output["image"]
+        target["boxes"] = torch.tensor(output["bboxes"], dtype=torch.float32)
+        target["labels"] = torch.tensor(output["labels"], dtype=torch.int64)
+        h = image.shape[-2]
+        w = image.shape[-1]
+        scale = torch.tensor([w, h, w, h], dtype=torch.float32)[None, :]
+        target["nboxes"] = box_xyxy_to_cxcywh(target["boxes"] / scale)
         return image, target
 
     def __len__(self) -> int:
