@@ -90,6 +90,7 @@ class MSDeformAttn(nn.Module):
         xavier_uniform_(self.output_proj.weight.data)
         constant_(self.output_proj.bias.data, 0.0)
 
+    @torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
     def forward(
         self,
         query,
@@ -110,66 +111,63 @@ class MSDeformAttn(nn.Module):
 
         :return output                     (N, Length_{query}, C)
         """
-        with autocast(enabled=False):
-            N, Len_q, _ = query.shape
-            N, Len_in, _ = input_flatten.shape
-            assert (
-                input_spatial_shapes[:, 0] * input_spatial_shapes[:, 1]
-            ).sum() == Len_in
+        N, Len_q, _ = query.shape
+        N, Len_in, _ = input_flatten.shape
+        assert (input_spatial_shapes[:, 0] * input_spatial_shapes[:, 1]).sum() == Len_in
 
-            value = self.value_proj(input_flatten)
-            if input_padding_mask is not None:
-                value = value.masked_fill(input_padding_mask[..., None], float(0))
-            value = value.view(N, Len_in, self.n_heads, self.d_model // self.n_heads)
-            sampling_offsets = self.sampling_offsets(query).view(
-                N, Len_q, self.n_heads, self.n_levels, self.n_points, 2
+        value = self.value_proj(input_flatten)
+        if input_padding_mask is not None:
+            value = value.masked_fill(input_padding_mask[..., None], float(0))
+        value = value.view(N, Len_in, self.n_heads, self.d_model // self.n_heads)
+        sampling_offsets = self.sampling_offsets(query).view(
+            N, Len_q, self.n_heads, self.n_levels, self.n_points, 2
+        )
+        attention_weights = self.attention_weights(query).view(
+            N, Len_q, self.n_heads, self.n_levels * self.n_points
+        )
+        attention_weights = F.softmax(attention_weights, -1).view(
+            N, Len_q, self.n_heads, self.n_levels, self.n_points
+        )
+        # N, Len_q, n_heads, n_levels, n_points, 2
+        if reference_points.shape[-1] == 2:
+            offset_normalizer = torch.stack(
+                [input_spatial_shapes[..., 1], input_spatial_shapes[..., 0]], -1
             )
-            attention_weights = self.attention_weights(query).view(
-                N, Len_q, self.n_heads, self.n_levels * self.n_points
+            sampling_locations = (
+                reference_points[:, :, None, :, None, :]
+                + sampling_offsets / offset_normalizer[None, None, None, :, None, :]
             )
-            attention_weights = F.softmax(attention_weights, -1).view(
-                N, Len_q, self.n_heads, self.n_levels, self.n_points
+        elif reference_points.shape[-1] == 4:
+            sampling_locations = (
+                reference_points[:, :, None, :, None, :2]
+                + sampling_offsets
+                / self.n_points
+                * reference_points[:, :, None, :, None, 2:]
+                * 0.5
             )
-            # N, Len_q, n_heads, n_levels, n_points, 2
-            if reference_points.shape[-1] == 2:
-                offset_normalizer = torch.stack(
-                    [input_spatial_shapes[..., 1], input_spatial_shapes[..., 0]], -1
+        else:
+            raise ValueError(
+                "Last dim of reference_points must be 2 or 4, but get {} instead.".format(
+                    reference_points.shape[-1]
                 )
-                sampling_locations = (
-                    reference_points[:, :, None, :, None, :]
-                    + sampling_offsets / offset_normalizer[None, None, None, :, None, :]
-                )
-            elif reference_points.shape[-1] == 4:
-                sampling_locations = (
-                    reference_points[:, :, None, :, None, :2]
-                    + sampling_offsets
-                    / self.n_points
-                    * reference_points[:, :, None, :, None, 2:]
-                    * 0.5
-                )
-            else:
-                raise ValueError(
-                    "Last dim of reference_points must be 2 or 4, but get {} instead.".format(
-                        reference_points.shape[-1]
-                    )
-                )
+            )
 
-            device = query.device
+        device = query.device
 
-            if device == torch.device("cpu"):
-                output = ms_deform_attn_core_pytorch(
-                    value, input_spatial_shapes, sampling_locations, attention_weights
-                )
-            else:
-                from ..functions import MSDeformAttnFunction
+        if device == torch.device("cpu"):
+            output = ms_deform_attn_core_pytorch(
+                value, input_spatial_shapes, sampling_locations, attention_weights
+            )
+        else:
+            from ..functions import ms_deform_attn_core_cuda
 
-                output = MSDeformAttnFunction.apply(
-                    value,
-                    input_spatial_shapes,
-                    input_level_start_index,
-                    sampling_locations,
-                    attention_weights,
-                    self.im2col_step,
-                )
-            output = self.output_proj(output)
-            return output
+            output = ms_deform_attn_core_cuda(
+                value,
+                input_spatial_shapes,
+                input_level_start_index,
+                sampling_locations,
+                attention_weights,
+                self.im2col_step,
+            )
+        output = self.output_proj(output)
+        return output

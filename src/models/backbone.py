@@ -16,6 +16,7 @@ import torch
 import torch.nn.functional as F
 import torchvision
 from torch import nn
+import torch.nn.init as init
 from torchvision.models._utils import IntermediateLayerGetter
 from torchvision.models.resnet import ResNet50_Weights
 from typing import Dict, List

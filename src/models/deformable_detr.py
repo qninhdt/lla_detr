@@ -1,4 +1,8 @@
 # ------------------------------------------------------------------------
+# H-DETR
+# Copyright (c) 2022 Peking University & Microsoft Research Asia. All Rights Reserved.
+# Licensed under the MIT-style license found in the LICENSE file in the root directory
+# ------------------------------------------------------------------------
 # Deformable DETR
 # Copyright (c) 2020 SenseTime. All Rights Reserved.
 # Licensed under the Apache License, Version 2.0 [see LICENSE for details]
@@ -21,9 +25,10 @@ from utils.misc import (
     nested_tensor_from_tensor_list,
     accuracy,
     get_world_size,
-    sigmoid_focal_loss,
+    interpolate,
     is_dist_avail_and_initialized,
     inverse_sigmoid,
+    sigmoid_focal_loss,
     Args,
 )
 
@@ -45,24 +50,29 @@ class DeformableDETR(nn.Module):
         backbone,
         transformer,
         num_classes,
-        num_queries,
         num_feature_levels,
         aux_loss=True,
         with_box_refine=False,
         two_stage=False,
+        num_queries_one2one=300,
+        num_queries_one2many=0,
+        mixed_selection=False,
     ):
         """Initializes the model.
         Parameters:
             backbone: torch module of the backbone to be used. See backbone.py
             transformer: torch module of the transformer architecture. See transformer.py
             num_classes: number of object classes
-            num_queries: number of object queries, ie detection slot. This is the maximal number of objects
-                         DETR can detect in a single image. For COCO, we recommend 100 queries.
             aux_loss: True if auxiliary decoding losses (loss at each decoder layer) are to be used.
             with_box_refine: iterative bounding box refinement
             two_stage: two-stage Deformable DETR
+            num_queries_one2one: number of object queries for one-to-one matching part
+            num_queries_one2many: number of object queries for one-to-many matching part
+            mixed_selection: a trick for Deformable DETR two stage
+
         """
         super().__init__()
+        num_queries = num_queries_one2one + num_queries_one2many
         self.num_queries = num_queries
         self.transformer = transformer
         hidden_dim = transformer.d_model
@@ -71,6 +81,8 @@ class DeformableDETR(nn.Module):
         self.num_feature_levels = num_feature_levels
         if not two_stage:
             self.query_embed = nn.Embedding(num_queries, hidden_dim * 2)
+        elif mixed_selection:
+            self.query_embed = nn.Embedding(num_queries, hidden_dim)
         if num_feature_levels > 1:
             num_backbone_outs = len(backbone.strides)
             input_proj_list = []
@@ -140,6 +152,8 @@ class DeformableDETR(nn.Module):
             self.transformer.decoder.class_embed = self.class_embed
             for box_embed in self.bbox_embed:
                 nn.init.constant_(box_embed.layers[-1].bias.data[2:], 0.0)
+        self.num_queries_one2one = num_queries_one2one
+        self.mixed_selection = mixed_selection
 
     def forward(self, samples: NestedTensor):
         """The forward expects a NestedTensor, which consists of:
@@ -184,18 +198,43 @@ class DeformableDETR(nn.Module):
                 pos.append(pos_l)
 
         query_embeds = None
-        if not self.two_stage:
-            query_embeds = self.query_embed.weight
+        if not self.two_stage or self.mixed_selection:
+            query_embeds = self.query_embed.weight[0 : self.num_queries, :]
+
+        # make attn mask
+        """ attention mask to prevent information leakage
+        """
+        self_attn_mask = (
+            torch.zeros(
+                [
+                    self.num_queries,
+                    self.num_queries,
+                ]
+            )
+            .bool()
+            .to(src.device)
+        )
+        self_attn_mask[
+            self.num_queries_one2one :,
+            0 : self.num_queries_one2one,
+        ] = True
+        self_attn_mask[
+            0 : self.num_queries_one2one,
+            self.num_queries_one2one :,
+        ] = True
+
         (
             hs,
             init_reference,
             inter_references,
             enc_outputs_class,
             enc_outputs_coord_unact,
-        ) = self.transformer(srcs, masks, pos, query_embeds)
+        ) = self.transformer(srcs, masks, pos, query_embeds, self_attn_mask)
 
-        outputs_classes = []
-        outputs_coords = []
+        outputs_classes_one2one = []
+        outputs_coords_one2one = []
+        outputs_classes_one2many = []
+        outputs_coords_one2many = []
         for lvl in range(hs.shape[0]):
             if lvl == 0:
                 reference = init_reference
@@ -210,14 +249,35 @@ class DeformableDETR(nn.Module):
                 assert reference.shape[-1] == 2
                 tmp[..., :2] += reference
             outputs_coord = tmp.sigmoid()
-            outputs_classes.append(outputs_class)
-            outputs_coords.append(outputs_coord)
-        outputs_class = torch.stack(outputs_classes)
-        outputs_coord = torch.stack(outputs_coords)
 
-        out = {"pred_logits": outputs_class[-1], "pred_boxes": outputs_coord[-1]}
+            outputs_classes_one2one.append(
+                outputs_class[:, 0 : self.num_queries_one2one]
+            )
+            outputs_classes_one2many.append(
+                outputs_class[:, self.num_queries_one2one :]
+            )
+            outputs_coords_one2one.append(
+                outputs_coord[:, 0 : self.num_queries_one2one]
+            )
+            outputs_coords_one2many.append(outputs_coord[:, self.num_queries_one2one :])
+        outputs_classes_one2one = torch.stack(outputs_classes_one2one)
+        outputs_coords_one2one = torch.stack(outputs_coords_one2one)
+        outputs_classes_one2many = torch.stack(outputs_classes_one2many)
+        outputs_coords_one2many = torch.stack(outputs_coords_one2many)
+
+        out = {
+            "pred_logits": outputs_classes_one2one[-1],
+            "pred_boxes": outputs_coords_one2one[-1],
+            "pred_logits_one2many": outputs_classes_one2many[-1],
+            "pred_boxes_one2many": outputs_coords_one2many[-1],
+        }
         if self.aux_loss:
-            out["aux_outputs"] = self._set_aux_loss(outputs_class, outputs_coord)
+            out["aux_outputs"] = self._set_aux_loss(
+                outputs_classes_one2one, outputs_coords_one2one
+            )
+            out["aux_outputs_one2many"] = self._set_aux_loss(
+                outputs_classes_one2many, outputs_coords_one2many
+            )
 
         if self.two_stage:
             enc_outputs_coord = enc_outputs_coord_unact.sigmoid()
@@ -248,7 +308,7 @@ class SetCriterion(nn.Module):
     def __init__(self, num_classes, matcher, weight_dict, losses, focal_alpha=0.25):
         """Create the criterion.
         Parameters:
-            num_classes: number of object labels, omitting the special no-object category
+            num_classes: number of object categories, omitting the special no-object category
             matcher: module able to compute a matching between targets and proposals
             weight_dict: dict containing as key the names of the losses and as values their relative weight.
             losses: list of all the losses to be applied. See get_loss for list of available losses.
@@ -444,6 +504,11 @@ class SetCriterion(nn.Module):
 class PostProcess(nn.Module):
     """This module converts the model's output into the format expected by the coco api"""
 
+    def __init__(self, topk=100):
+        super().__init__()
+        self.topk = topk
+        print("topk for eval:", self.topk)
+
     @torch.no_grad()
     def forward(self, outputs, target_sizes):
         """Perform the computation
@@ -460,7 +525,7 @@ class PostProcess(nn.Module):
 
         prob = out_logits.sigmoid()
         topk_values, topk_indexes = torch.topk(
-            prob.view(out_logits.shape[0], -1), 100, dim=1
+            prob.view(out_logits.shape[0], -1), self.topk, dim=1
         )
         scores = topk_values
         topk_boxes = topk_indexes // out_logits.shape[2]
@@ -509,11 +574,13 @@ def build(**args):
         backbone,
         transformer,
         num_classes=num_classes,
-        num_queries=args.num_queries,
         num_feature_levels=args.num_feature_levels,
         aux_loss=args.aux_loss,
         with_box_refine=args.with_box_refine,
         two_stage=args.two_stage,
+        num_queries_one2one=args.num_queries_one2one,
+        num_queries_one2many=args.num_queries_one2many,
+        mixed_selection=args.mixed_selection,
     )
 
     matcher = build_matcher(args)
@@ -527,6 +594,12 @@ def build(**args):
             aux_weight_dict.update({k + f"_{i}": v for k, v in weight_dict.items()})
         aux_weight_dict.update({k + f"_enc": v for k, v in weight_dict.items()})
         weight_dict.update(aux_weight_dict)
+
+    new_dict = dict()
+    for key, value in weight_dict.items():
+        new_dict[key] = value
+        new_dict[key + "_one2many"] = value
+    weight_dict = new_dict
 
     losses = ["labels", "boxes", "cardinality"]
     criterion = SetCriterion(

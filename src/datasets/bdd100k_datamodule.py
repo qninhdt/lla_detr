@@ -53,28 +53,28 @@ class BDD100KDataModule(LightningDataModule):
         self.train_transforms = T.Compose(
             [
                 T.RandomHorizontalFlip(p=0.5),
-                T.RandomApply(
-                    [
-                        T.RandomChoice(
-                            [
-                                T.RandomResizedCrop(
-                                    self.image_size,
-                                    scale=(0.1, 0.667),
-                                    ratio=(
-                                        self.image_size[1] / self.image_size[0],
-                                        self.image_size[1] / self.image_size[0],
-                                    ),
-                                    antialias=True,
-                                ),
-                                T.CenterCrop(sizes[0]),
-                                T.CenterCrop(sizes[1]),
-                                T.CenterCrop(sizes[2]),
-                            ],
-                            p=[0.4, 0.2, 0.2, 0.2],
-                        )
-                    ],
-                    p=0.75,
-                ),
+                # T.RandomApply(
+                #     [
+                #         T.RandomChoice(
+                #             [
+                #                 T.RandomResizedCrop(
+                #                     self.image_size,
+                #                     scale=(0.1, 0.667),
+                #                     ratio=(
+                #                         self.image_size[1] / self.image_size[0],
+                #                         self.image_size[1] / self.image_size[0],
+                #                     ),
+                #                     antialias=True,
+                #                 ),
+                #                 T.CenterCrop(sizes[0]),
+                #                 T.CenterCrop(sizes[1]),
+                #                 T.CenterCrop(sizes[2]),
+                #             ],
+                #             p=[0.4, 0.2, 0.2, 0.2],
+                #         )
+                #     ],
+                #     p=0.75,
+                # ),
                 T.Resize(
                     self.image_size,
                     antialias=True,

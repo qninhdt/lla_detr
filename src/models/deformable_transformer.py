@@ -1,4 +1,8 @@
 # ------------------------------------------------------------------------
+# H-DETR
+# Copyright (c) 2022 Peking University & Microsoft Research Asia. All Rights Reserved.
+# Licensed under the MIT-style license found in the LICENSE file in the root directory
+# ------------------------------------------------------------------------
 # Deformable DETR
 # Copyright (c) 2020 SenseTime. All Rights Reserved.
 # Licensed under the Apache License, Version 2.0 [see LICENSE for details]
@@ -14,6 +18,7 @@ import math
 import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
+import torch.utils.checkpoint as checkpoint
 from torch.nn.init import xavier_uniform_, constant_, uniform_, normal_
 
 from utils.misc import inverse_sigmoid
@@ -36,6 +41,9 @@ class DeformableTransformer(nn.Module):
         enc_n_points=4,
         two_stage=False,
         two_stage_num_proposals=300,
+        look_forward_twice=False,
+        mixed_selection=False,
+        use_checkpoint=False,
     ):
         super().__init__()
 
@@ -53,7 +61,9 @@ class DeformableTransformer(nn.Module):
             nhead,
             enc_n_points,
         )
-        self.encoder = DeformableTransformerEncoder(encoder_layer, num_encoder_layers)
+        self.encoder = DeformableTransformerEncoder(
+            encoder_layer, num_encoder_layers, use_checkpoint
+        )
 
         decoder_layer = DeformableTransformerDecoderLayer(
             d_model,
@@ -65,7 +75,11 @@ class DeformableTransformer(nn.Module):
             dec_n_points,
         )
         self.decoder = DeformableTransformerDecoder(
-            decoder_layer, num_decoder_layers, return_intermediate_dec
+            decoder_layer,
+            num_decoder_layers,
+            return_intermediate_dec,
+            look_forward_twice,
+            use_checkpoint,
         )
 
         self.level_embed = nn.Parameter(torch.Tensor(num_feature_levels, d_model))
@@ -78,6 +92,7 @@ class DeformableTransformer(nn.Module):
         else:
             self.reference_points = nn.Linear(d_model, 2)
 
+        self.mixed_selection = mixed_selection
         self._reset_parameters()
 
     def _reset_parameters(self):
@@ -170,8 +185,8 @@ class DeformableTransformer(nn.Module):
         valid_ratio = torch.stack([valid_ratio_w, valid_ratio_h], -1)
         return valid_ratio
 
-    def forward(self, srcs, masks, pos_embeds, query_embed=None):
-        assert self.two_stage or query_embed is not None
+    @torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
+    def forward(self, srcs, masks, pos_embeds, query_embed=None, self_attn_mask=None):
 
         # prepare input for encoder
         src_flatten = []
@@ -237,7 +252,13 @@ class DeformableTransformer(nn.Module):
             pos_trans_out = self.pos_trans_norm(
                 self.pos_trans(self.get_proposal_pos_embed(topk_coords_unact))
             )
-            query_embed, tgt = torch.split(pos_trans_out, c, dim=2)
+
+            if not self.mixed_selection:
+                query_embed, tgt = torch.split(pos_trans_out, c, dim=2)
+            else:
+                # query_embed here is the content embed for deformable DETR
+                tgt = query_embed.unsqueeze(0).expand(bs, -1, -1)
+                query_embed, _ = torch.split(pos_trans_out, c, dim=2)
         else:
             query_embed, tgt = torch.split(query_embed, c, dim=1)
             query_embed = query_embed.unsqueeze(0).expand(bs, -1, -1)
@@ -255,6 +276,7 @@ class DeformableTransformer(nn.Module):
             valid_ratios,
             query_embed,
             mask_flatten,
+            self_attn_mask,
         )
 
         inter_references_out = inter_references
@@ -305,6 +327,7 @@ class DeformableTransformerEncoderLayer(nn.Module):
         src = self.norm2(src)
         return src
 
+    @torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
     def forward(
         self,
         src,
@@ -333,15 +356,17 @@ class DeformableTransformerEncoderLayer(nn.Module):
 
 
 class DeformableTransformerEncoder(nn.Module):
-    def __init__(self, encoder_layer, num_layers):
+    def __init__(self, encoder_layer, num_layers, use_checkpoint=False):
         super().__init__()
         self.layers = _get_clones(encoder_layer, num_layers)
         self.num_layers = num_layers
+        self.use_checkpoint = use_checkpoint
 
     @staticmethod
     def get_reference_points(spatial_shapes, valid_ratios, device):
         reference_points_list = []
         for lvl, (H_, W_) in enumerate(spatial_shapes):
+
             ref_y, ref_x = torch.meshgrid(
                 torch.linspace(0.5, H_ - 0.5, H_, dtype=torch.float32, device=device),
                 torch.linspace(0.5, W_ - 0.5, W_, dtype=torch.float32, device=device),
@@ -354,6 +379,7 @@ class DeformableTransformerEncoder(nn.Module):
         reference_points = reference_points[:, :, None] * valid_ratios[:, None]
         return reference_points
 
+    @torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
     def forward(
         self,
         src,
@@ -368,14 +394,25 @@ class DeformableTransformerEncoder(nn.Module):
             spatial_shapes, valid_ratios, device=src.device
         )
         for _, layer in enumerate(self.layers):
-            output = layer(
-                output,
-                pos,
-                reference_points,
-                spatial_shapes,
-                level_start_index,
-                padding_mask,
-            )
+            if self.use_checkpoint:
+                output = checkpoint.checkpoint(
+                    layer,
+                    output,
+                    pos,
+                    reference_points,
+                    spatial_shapes,
+                    level_start_index,
+                    padding_mask,
+                )
+            else:
+                output = layer(
+                    output,
+                    pos,
+                    reference_points,
+                    spatial_shapes,
+                    level_start_index,
+                    padding_mask,
+                )
 
         return output
 
@@ -421,6 +458,7 @@ class DeformableTransformerDecoderLayer(nn.Module):
         tgt = self.norm3(tgt)
         return tgt
 
+    @torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
     def forward(
         self,
         tgt,
@@ -430,11 +468,15 @@ class DeformableTransformerDecoderLayer(nn.Module):
         src_spatial_shapes,
         level_start_index,
         src_padding_mask=None,
+        self_attn_mask=None,
     ):
         # self attention
         q = k = self.with_pos_embed(tgt, query_pos)
         tgt2 = self.self_attn(
-            q.transpose(0, 1), k.transpose(0, 1), tgt.transpose(0, 1)
+            q.transpose(0, 1),
+            k.transpose(0, 1),
+            tgt.transpose(0, 1),
+            attn_mask=self_attn_mask,
         )[0].transpose(0, 1)
         tgt = tgt + self.dropout2(tgt2)
         tgt = self.norm2(tgt)
@@ -458,15 +500,25 @@ class DeformableTransformerDecoderLayer(nn.Module):
 
 
 class DeformableTransformerDecoder(nn.Module):
-    def __init__(self, decoder_layer, num_layers, return_intermediate=False):
+    def __init__(
+        self,
+        decoder_layer,
+        num_layers,
+        return_intermediate=False,
+        look_forward_twice=False,
+        use_checkpoint=False,
+    ):
         super().__init__()
         self.layers = _get_clones(decoder_layer, num_layers)
         self.num_layers = num_layers
         self.return_intermediate = return_intermediate
+        self.look_forward_twice = look_forward_twice
+        self.use_checkpoint = use_checkpoint
         # hack implementation for iterative bounding box refinement and two-stage Deformable DETR
         self.bbox_embed = None
         self.class_embed = None
 
+    @torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
     def forward(
         self,
         tgt,
@@ -477,6 +529,7 @@ class DeformableTransformerDecoder(nn.Module):
         src_valid_ratios,
         query_pos=None,
         src_padding_mask=None,
+        self_attn_mask=None,
     ):
         output = tgt
 
@@ -493,15 +546,29 @@ class DeformableTransformerDecoder(nn.Module):
                 reference_points_input = (
                     reference_points[:, :, None] * src_valid_ratios[:, None]
                 )
-            output = layer(
-                output,
-                query_pos,
-                reference_points_input,
-                src,
-                src_spatial_shapes,
-                src_level_start_index,
-                src_padding_mask,
-            )
+            if self.use_checkpoint:
+                output = checkpoint.checkpoint(
+                    layer,
+                    output,
+                    query_pos,
+                    reference_points_input,
+                    src,
+                    src_spatial_shapes,
+                    src_level_start_index,
+                    src_padding_mask,
+                    self_attn_mask,
+                )
+            else:
+                output = layer(
+                    output,
+                    query_pos,
+                    reference_points_input,
+                    src,
+                    src_spatial_shapes,
+                    src_level_start_index,
+                    src_padding_mask,
+                    self_attn_mask,
+                )
 
             # hack implementation for iterative bounding box refinement
             if self.bbox_embed is not None:
@@ -520,7 +587,11 @@ class DeformableTransformerDecoder(nn.Module):
 
             if self.return_intermediate:
                 intermediate.append(output)
-                intermediate_reference_points.append(reference_points)
+                intermediate_reference_points.append(
+                    new_reference_points
+                    if self.look_forward_twice
+                    else reference_points
+                )
 
         if self.return_intermediate:
             return torch.stack(intermediate), torch.stack(intermediate_reference_points)
@@ -557,5 +628,8 @@ def build_deforamble_transformer(args):
         dec_n_points=args.dec_n_points,
         enc_n_points=args.enc_n_points,
         two_stage=args.two_stage,
-        two_stage_num_proposals=args.num_queries,
+        two_stage_num_proposals=args.num_queries_one2one + args.num_queries_one2many,
+        mixed_selection=args.mixed_selection,
+        look_forward_twice=args.look_forward_twice,
+        use_checkpoint=args.use_checkpoint,
     )
