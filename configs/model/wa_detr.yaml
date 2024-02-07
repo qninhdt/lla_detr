@@ -1,12 +1,16 @@
 _target_: models.wa_detr_module.WADETRModule
 
 optimizer:
-  lr: 0.0002
-  lr_backbone: 0.00002
-  lr_drop: 40
+  lr: 0.0001
+  lr_backbone: 0.00001
+  lr_drop: 20
   lr_gamma: 0.1
   lr_linear_proj_mult: 0.1
   weight_decay: 0.0001
+
+hybrid:
+  k_one2many: 6
+  lambda_one2many: 1.0
 
 net:
   _target_: models.wa_detr.build
@@ -15,8 +19,9 @@ net:
 
   num_embeddings: 8
 
-  with_box_refine: false
-  two_stage: false
+  # Variants of Deformable DETR
+  with_box_refine: true
+  two_stage: true
 
   # model parameters
   frozen_weights: null
@@ -31,13 +36,19 @@ net:
   # transformer
   enc_layers: 6
   dec_layers: 6
-  dim_feedforward: 1024
+  dim_feedforward: 2048
   hidden_dim: 256
-  dropout: 0.1
+  dropout: 0.0
   nheads: 8
-  num_queries: 300
+  num_queries_one2one: 300
+  num_queries_one2many: 1500
   dec_n_points: 4
   enc_n_points: 4
+
+  # trick
+  mixed_selection: true
+  look_forward_twice: true
+  use_checkpoint: false
 
   # loss
   aux_loss: true
@@ -48,11 +59,10 @@ net:
   set_cost_giou: 2
 
   # loss coefficients
-  dice_loss_coef: 1
   giou_loss_coef: 2
   bbox_loss_coef: 5
   cls_loss_coef: 2
   focal_alpha: 0.25
 
 # compile model for faster training with pytorch 2.0
-compile: true
+compile: false

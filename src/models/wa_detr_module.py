@@ -3,12 +3,13 @@ from typing import Any, Dict, Tuple, List
 from time import time
 
 import torch
+import copy
 from lightning import LightningModule
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from torchmetrics import MeanMetric
 
 from .wa_detr import WADETR, SetCriterion, PostProcess
-from utils.misc import reduce_dict, match_name_keywords
+from utils.misc import match_name_keywords, get_total_grad_norm
 
 from utils import RankedLogger
 
@@ -20,6 +21,7 @@ class WADETRModule(LightningModule):
         self,
         net: Tuple[WADETR, SetCriterion, PostProcess] = None,
         optimizer: Dict[str, Any] = None,
+        hybrid=None,
         compile: bool = False,
     ) -> None:
         super().__init__()
@@ -53,43 +55,77 @@ class WADETRModule(LightningModule):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)
 
+    def train_hybrid(self, outputs, targets, k_one2many, criterion, lambda_one2many):
+        # one-to-one-loss
+        loss_dict = criterion(outputs, targets)
+        multi_targets = copy.deepcopy(targets)
+        # repeat the targets
+        for target in multi_targets:
+            target["nboxes"] = target["nboxes"].repeat(k_one2many, 1)
+            target["labels"] = target["labels"].repeat(k_one2many)
+
+        outputs_one2many = dict()
+        outputs_one2many["pred_logits"] = outputs["pred_logits_one2many"]
+        outputs_one2many["pred_boxes"] = outputs["pred_boxes_one2many"]
+        outputs_one2many["aux_outputs"] = outputs["aux_outputs_one2many"]
+
+        # one-to-many loss
+        loss_dict_one2many = criterion(outputs_one2many, multi_targets)
+        for key, value in loss_dict_one2many.items():
+            if key + "_one2many" in loss_dict.keys():
+                loss_dict[key + "_one2many"] += value * lambda_one2many
+            else:
+                loss_dict[key + "_one2many"] = value * lambda_one2many
+        return loss_dict
+
     def model_step(
         self, batch: Tuple[torch.Tensor, List[dict]]
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         images, targets = batch
+
         preds = self.forward(images)
-        losses = self.criterion(preds, targets)
+
+        if self.hparams.hybrid.k_one2many > 0:
+            loss_dict = self.train_hybrid(
+                preds,
+                targets,
+                self.hparams.hybrid.k_one2many,
+                self.criterion,
+                self.hparams.hybrid.lambda_one2many,
+            )
+        else:
+            loss_dict = self.criterion(preds, targets)
 
         weight_dict = self.criterion.weight_dict
 
         loss = sum(
-            losses[k] * weight_dict[k] for k in losses.keys() if k in weight_dict
+            loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict
         )
 
-        # reduced_losses = reduce_dict(losses)
-        # reduced_scaled_losses = {
-        #     k: v * weight_dict[k] for k, v in reduced_losses.items() if k in weight_dict
+        # reduced_loss_dict = reduce_dict(loss_dict)
+        # reduced_scaled_loss_dict = {
+        #     k: v * weight_dict[k] for k, v in reduced_loss_dict.items() if k in weight_dict
         # }
 
-        # reduced_loss = sum(reduced_scaled_losses.values())
+        # reduced_loss = sum(reduced_scaled_loss_dict.values())
 
         preds = self.postprocess(preds, targets)
 
-        return (preds, targets, loss, losses)
+        return (preds, targets, loss, loss_dict)
 
     def training_step(
         self, batch: Tuple[torch.Tensor, List[dict]], batch_idx: int
     ) -> torch.Tensor:
         start = time()
 
-        (preds, targets, loss, losses) = self.model_step(batch)
+        (preds, targets, loss, loss_dict) = self.model_step(batch)
 
         # update and log metrics
         self.train_loss.update(loss)
-        self.train_loss_ce.update(losses["loss_ce"])
-        self.train_loss_bbox.update(losses["loss_bbox"])
-        self.train_loss_giou.update(losses["loss_giou"])
-        self.train_class_error.update(losses["class_error"])
+        self.train_loss_ce.update(loss_dict["loss_ce"])
+        self.train_loss_bbox.update(loss_dict["loss_bbox"])
+        self.train_loss_giou.update(loss_dict["loss_giou"])
+        self.train_class_error.update(loss_dict["class_error"])
         self.training_speed.update(1.0 / (time() - start))
 
         self.log("train/rt_loss", loss, prog_bar=True)
@@ -150,15 +186,15 @@ class WADETRModule(LightningModule):
     def validation_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> None:
-        preds, targets, loss, losses = self.model_step(batch)
+        preds, targets, loss, loss_dict = self.model_step(batch)
 
         # update and log metrics
         self.val_loss.update(loss)
         self.val_mAP.update(preds, targets)
-        self.val_loss_ce.update(losses["loss_ce"])
-        self.val_loss_bbox.update(losses["loss_bbox"])
-        self.val_loss_giou.update(losses["loss_giou"])
-        self.val_class_error.update(losses["class_error"])
+        self.val_loss_ce.update(loss_dict["loss_ce"])
+        self.val_loss_bbox.update(loss_dict["loss_bbox"])
+        self.val_loss_giou.update(loss_dict["loss_giou"])
+        self.val_class_error.update(loss_dict["class_error"])
 
     def on_validation_epoch_end(self) -> None:
         metrics = self.val_mAP.compute()
