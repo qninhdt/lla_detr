@@ -252,7 +252,7 @@ class WADETRModule(LightningModule):
                     for n, p in self.model.named_parameters()
                     if (
                         not match_name_keywords(n, ["backbone.0"])
-                        or match_name_keywords(n, ["lla_cnn_blocks"])
+                        or match_name_keywords(n, ["cls_branch"])
                     )
                     and not match_name_keywords(
                         n, ["reference_points", "sampling_offsets"]
@@ -266,7 +266,7 @@ class WADETRModule(LightningModule):
                     p
                     for n, p in self.model.named_parameters()
                     if match_name_keywords(n, ["backbone.0"])
-                    and not match_name_keywords(n, ["lla_cnn_blocks"])
+                    and not match_name_keywords(n, ["cls_branch"])
                     and p.requires_grad
                 ],
                 "lr": self.hparams.optimizer.lr_backbone,

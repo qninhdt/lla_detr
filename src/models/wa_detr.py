@@ -32,7 +32,7 @@ from utils.misc import (
     Args,
 )
 
-from .backbone import build_lla_backbone
+from .backbone import build_backbone
 from .matcher import build_matcher
 from .deformable_transformer import build_deforamble_transformer
 import copy
@@ -567,7 +567,7 @@ def build(**args):
     args = Args(**args)
     num_classes = args.num_classes
 
-    backbone = build_lla_backbone(args)
+    backbone = build_backbone(args)
 
     transformer = build_deforamble_transformer(args)
     model = WADETR(

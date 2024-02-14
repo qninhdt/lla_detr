@@ -16,15 +16,13 @@ import torch
 import torch.nn.functional as F
 import torchvision
 from torch import nn
-import torch.nn.init as init
-from torchvision.models._utils import IntermediateLayerGetter
 from torchvision.models.resnet import ResNet50_Weights
 from typing import Dict, List
 
 from utils.misc import NestedTensor
 
 from .position_encoding import build_position_encoding
-from .lla_cnn_block import LowLightApdaptiveCNNBlock
+from . import lla_resnet
 
 
 class FrozenBatchNorm2d(torch.nn.Module):
@@ -83,7 +81,7 @@ class FrozenBatchNorm2d(torch.nn.Module):
 
 class BackboneBase(nn.Module):
     def __init__(
-        self, backbone: nn.Module, train_backbone: bool, return_interm_layers: bool
+        self, backbone: nn.Module, return_interm_layers: bool
     ):
         super().__init__()
         # for name, parameter in backbone.named_parameters():
@@ -103,10 +101,14 @@ class BackboneBase(nn.Module):
             return_layers = {"layer4": "0"}
             self.strides = [32]
             self.num_channels = [2048]
-        self.body = IntermediateLayerGetter(backbone, return_layers=return_layers)
+        self.body = backbone
 
-    def forward(self, tensor_list: NestedTensor):
-        xs = self.body(tensor_list.tensors)
+    def forward(self, tensor_list: NestedTensor, alpha: torch.Tensor = None):
+        if alpha is not None:
+            xs = self.body(tensor_list.tensors, alpha)
+        else:
+            xs = self.body(tensor_list.tensors)
+            
         out: Dict[str, NestedTensor] = {}
         for name, x in xs.items():
             m = tensor_list.mask
@@ -121,53 +123,55 @@ class Backbone(BackboneBase):
 
     def __init__(
         self,
-        name: str,
-        train_backbone: bool,
         return_interm_layers: bool,
         dilation: bool,
+        use_lla: bool,
+        num_embeddings: int,
     ):
         norm_layer = FrozenBatchNorm2d
-        backbone = getattr(torchvision.models, name)(
-            replace_stride_with_dilation=[False, False, dilation],
-            weights=ResNet50_Weights.DEFAULT,
-            norm_layer=norm_layer,
-        )
-        assert name not in ("resnet18", "resnet34"), "number of channels are hard coded"
-        super().__init__(backbone, train_backbone, return_interm_layers)
+
+        if use_lla:
+            backbone = lla_resnet.resnet50(
+                replace_stride_with_dilation=[False, False, dilation],
+                weights=ResNet50_Weights.IMAGENET1K_V2,
+                norm_layer=norm_layer,
+                num_embeddings=num_embeddings,
+            )
+        else:
+            backbone = torchvision.models.resnet50(
+                replace_stride_with_dilation=[False, False, dilation],
+                weights=ResNet50_Weights.IMAGENET1K_V2,
+                norm_layer=norm_layer,
+            )
+
+        super().__init__(backbone, return_interm_layers)
         if dilation:
             self.strides[-1] = self.strides[-1] // 2
 
+        self.use_lla = use_lla
 
-class LLABackbone(Backbone):
-    def __init__(
-        self,
-        name: str,
-        train_backbone: bool,
-        return_interm_layers: bool,
-        dilation: bool,
-        num_embeddings: int,
-    ):
-        super().__init__(name, train_backbone, return_interm_layers, dilation)
+        if use_lla:
+            self.cls_branch = nn.Sequential(
+                nn.Conv2d(3, 64, kernel_size=5, stride=1, padding=2),
+                nn.ReLU(),
+                nn.AdaptiveAvgPool2d((1, 1)),
+                nn.Flatten(),
+                nn.Linear(64, num_embeddings),
+            )
 
-        self.lla_cnn_blocks = nn.ModuleList(
-            [
-                LowLightApdaptiveCNNBlock(
-                    in_channels,
-                    in_channels,
-                    kernel_size=3,
-                    stride=1,
-                    padding=1,
-                    num_embeddings=num_embeddings,
-                )
-                for in_channels in self.num_channels
-            ]
-        )
+    def compute_alpha(self, x: torch.Tensor) -> torch.Tensor:
+        low_x = F.interpolate(x, scale_factor=0.25, mode="bilinear", align_corners=False)
+        alpha = self.cls_branch(low_x)
+        alpha = F.softmax(alpha / 10, dim=1)
+
+        return alpha
 
     def forward(self, tensor_list: NestedTensor):
-        out = super().forward(tensor_list)
-
-        for name, feat in out.items():
-            feat.tensors = self.lla_cnn_blocks[int(name)](feat.tensors)
+        if self.use_lla:
+            alpha = self.compute_alpha(tensor_list.tensors)
+            out = super().forward(tensor_list, alpha)
+        else:
+            out = super().forward(tensor_list)
 
         return out
 
@@ -195,16 +199,6 @@ class Joiner(nn.Sequential):
 def build_backbone(args):
     position_embedding = build_position_encoding(args)
     return_interm_layers = args.num_feature_levels > 1
-    backbone = Backbone(args.backbone, True, return_interm_layers, args.dilation)
-    model = Joiner(backbone, position_embedding)
-    return model
-
-
-def build_lla_backbone(args):
-    position_embedding = build_position_encoding(args)
-    return_interm_layers = args.num_feature_levels > 1
-    backbone = LLABackbone(
-        args.backbone, True, return_interm_layers, args.dilation, args.num_embeddings
-    )
+    backbone = Backbone(return_interm_layers, args.dilation, args.use_lla, args.num_embeddings)
     model = Joiner(backbone, position_embedding)
     return model

@@ -17,8 +17,6 @@ net:
 
   num_classes: 12
 
-  num_embeddings: 8
-
   # Variants of Deformable DETR
   with_box_refine: true
   two_stage: true
@@ -27,11 +25,12 @@ net:
   frozen_weights: null
 
   # backbone
-  backbone: resnet50
   dilation: false
   position_embedding: sine # sine | learned
   position_embedding_scale: 6.28318530718 # 2 * pi
   num_feature_levels: 4
+  use_lla: true
+  num_embeddings: 2
 
   # transformer
   enc_layers: 6
