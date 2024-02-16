@@ -143,14 +143,14 @@ class ResNet(nn.Module):
             )
         self.groups = groups
         self.base_width = width_per_group
-        self.conv1 = _Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
+        self.conv1 = LLAConv2d(3, self.inplanes, kernel_size=(7,7), stride=2, padding=3, num_embeddings=num_embeddings)
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.layer1 = self._make_layer(block, 64, layers[0], num_embeddings=num_embeddings)
-        self.layer2 = self._make_layer(block, 128, layers[1], stride=2, dilate=replace_stride_with_dilation[0], num_embeddings=num_embeddings)
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=2, dilate=replace_stride_with_dilation[1], num_embeddings=num_embeddings)
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2, dilate=replace_stride_with_dilation[2], num_embeddings=num_embeddings)
+        self.layer1 = self._make_layer(block, 64, layers[0], num_embeddings=num_embeddings, use_lla=True)
+        self.layer2 = self._make_layer(block, 128, layers[1], stride=2, dilate=replace_stride_with_dilation[0], num_embeddings=num_embeddings, use_lla=True)
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=2, dilate=replace_stride_with_dilation[1], num_embeddings=num_embeddings, use_lla=False)
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=2, dilate=replace_stride_with_dilation[2], num_embeddings=num_embeddings, use_lla=False)
 
         for m in self.modules():
             if isinstance(m, _Conv2d):
@@ -175,6 +175,7 @@ class ResNet(nn.Module):
         stride: int = 1,
         dilate: bool = False,
         num_embeddings: int = 1,
+        use_lla: bool = False,
     ) -> nn.Sequential:
         norm_layer = self._norm_layer
         downsample = None
@@ -189,8 +190,11 @@ class ResNet(nn.Module):
             )
 
         layers = []
+
+        cnn = LLAConv2d if use_lla else _Conv2d
+
         layers.append(block(
-            LLAConv2d,
+            cnn,
             self.inplanes, planes, stride, downsample, self.groups, self.base_width, previous_dilation, norm_layer, num_embeddings=num_embeddings
         ))
 
@@ -198,13 +202,14 @@ class ResNet(nn.Module):
         for _ in range(1, blocks):
             layers.append(
                 block(
-                    _Conv2d,
+                    cnn,
                     self.inplanes,
                     planes,
                     groups=self.groups,
                     base_width=self.base_width,
                     dilation=self.dilation,
                     norm_layer=norm_layer,
+                    num_embeddings=num_embeddings
                 )
             )
 
@@ -212,12 +217,12 @@ class ResNet(nn.Module):
 
     def _forward_impl(self, x: Tensor, alpha: Tensor) -> Tensor:
         # See note [TorchScript super()]
-        x = self.conv1(x)
+        x = self.conv1(x, alpha)
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
 
-        print(torch.sort(alpha, dim=1)[0])
+        print(torch.argmax(alpha, dim=1).tolist(), end=" ")
 
         x, _ = self.layer1((x, alpha))
 
@@ -257,18 +262,25 @@ def _resnet(
         state_dict = weights.get_state_dict(progress=progress, check_hash=True)
 
         targets = [
+            "conv1.weight",
             "layer1.0.conv1.weight",
             "layer1.0.conv2.weight",
             "layer1.0.conv3.weight",
+            "layer1.1.conv1.weight",
+            "layer1.1.conv2.weight",
+            "layer1.1.conv3.weight",
+            "layer1.2.conv1.weight",
+            "layer1.2.conv2.weight",
+            "layer1.2.conv3.weight",
             "layer2.0.conv1.weight",
             "layer2.0.conv2.weight",
             "layer2.0.conv3.weight",
-            "layer3.0.conv1.weight",
-            "layer3.0.conv2.weight",
-            "layer3.0.conv3.weight",
-            "layer4.0.conv1.weight",
-            "layer4.0.conv2.weight",
-            "layer4.0.conv3.weight",
+            "layer2.1.conv1.weight",
+            "layer2.1.conv2.weight",
+            "layer2.1.conv3.weight",
+            "layer2.2.conv1.weight",
+            "layer2.2.conv2.weight",
+            "layer2.2.conv3.weight",
         ]
 
         state_dict_ = dict(state_dict.items())

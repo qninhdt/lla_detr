@@ -111,6 +111,8 @@ class WADETRModule(LightningModule):
 
         preds = self.postprocess(preds, targets)
 
+        print([target['timeofday'].tolist() for target in targets])
+
         return (preds, targets, loss, loss_dict)
 
     def training_step(
@@ -245,14 +247,16 @@ class WADETRModule(LightningModule):
             self.model = torch.compile(self.model)
 
     def configure_optimizers(self) -> Dict[str, Any]:
+        backbone_exclude = ["cls_branch", "backbone.0.body.layer1", "backbone.0.body.layer2", "backbone.0.body.conv1"]
+
         param_dicts = [
             {
-                "params": [
+                "params": [ 
                     p
                     for n, p in self.model.named_parameters()
                     if (
                         not match_name_keywords(n, ["backbone.0"])
-                        or match_name_keywords(n, ["cls_branch"])
+                        or match_name_keywords(n, backbone_exclude)
                     )
                     and not match_name_keywords(
                         n, ["reference_points", "sampling_offsets"]
@@ -266,7 +270,7 @@ class WADETRModule(LightningModule):
                     p
                     for n, p in self.model.named_parameters()
                     if match_name_keywords(n, ["backbone.0"])
-                    and not match_name_keywords(n, ["cls_branch"])
+                    and not match_name_keywords(n, backbone_exclude)
                     and p.requires_grad
                 ],
                 "lr": self.hparams.optimizer.lr_backbone,

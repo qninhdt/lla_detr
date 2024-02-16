@@ -154,15 +154,21 @@ class Backbone(BackboneBase):
             self.cls_branch = nn.Sequential(
                 nn.Conv2d(3, 64, kernel_size=5, stride=1, padding=2),
                 nn.ReLU(),
+                nn.MaxPool2d(kernel_size=2, stride=2),
+                nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
                 nn.AdaptiveAvgPool2d((1, 1)),
                 nn.Flatten(),
+                nn.Linear(128, 64),
+                nn.Dropout(0.2),
                 nn.Linear(64, num_embeddings),
+                nn.Dropout(0.2),
             )
 
     def compute_alpha(self, x: torch.Tensor) -> torch.Tensor:
         low_x = F.interpolate(x, scale_factor=0.25, mode="bilinear", align_corners=False)
         alpha = self.cls_branch(low_x)
-        alpha = F.softmax(alpha / 10, dim=1)
+        alpha = F.softmax(alpha / 20, dim=1)
 
         return alpha
 
