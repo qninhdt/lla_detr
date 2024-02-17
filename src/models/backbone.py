@@ -17,6 +17,7 @@ import torch.nn.functional as F
 import torchvision
 from torch import nn
 from torchvision.models.resnet import ResNet50_Weights
+from torchvision.models._utils import IntermediateLayerGetter
 from typing import Dict, List
 
 from utils.misc import NestedTensor
@@ -84,21 +85,11 @@ class BackboneBase(nn.Module):
         self, backbone: nn.Module, return_interm_layers: bool
     ):
         super().__init__()
-        # for name, parameter in backbone.named_parameters():
-        #     if (
-        #         not train_backbone
-        #         or "layer2" not in name
-        #         and "layer3" not in name
-        #         and "layer4" not in name
-        #     ):
-        #         parameter.requires_grad_(False)
+
         if return_interm_layers:
-            # return_layers = {"layer1": "0", "layer2": "1", "layer3": "2", "layer4": "3"}
-            return_layers = {"layer2": "0", "layer3": "1", "layer4": "2"}
             self.strides = [8, 16, 32]
             self.num_channels = [512, 1024, 2048]
         else:
-            return_layers = {"layer4": "0"}
             self.strides = [32]
             self.num_channels = [2048]
         self.body = backbone
@@ -143,6 +134,7 @@ class Backbone(BackboneBase):
                 weights=ResNet50_Weights.IMAGENET1K_V2,
                 norm_layer=norm_layer,
             )
+            backbone = IntermediateLayerGetter(backbone, return_layers={"layer2": "0", "layer3": "1", "layer4": "2"})
 
         super().__init__(backbone, return_interm_layers)
         if dilation:
