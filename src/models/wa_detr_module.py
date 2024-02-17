@@ -51,6 +51,7 @@ class WADETRModule(LightningModule):
         self.val_class_error = MeanMetric()
 
         self.training_speed = MeanMetric()
+        self.results = []
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)
@@ -240,7 +241,41 @@ class WADETRModule(LightningModule):
     def test_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> None:
-        pass
+        preds, targets, loss, loss_dict = self.model_step(batch)
+
+        from datasets.bdd100k import categories
+
+        for pred, target in zip(preds, targets):
+            name = target["name"]
+            boxes = pred["boxes"].tolist()
+            categories = pred["labels"].tolist()
+            scores = pred["scores"].tolist()
+
+            self.results.append({
+                "name": name,
+                "labels": [
+                    {
+                        "box2d": {
+                            "x1": box[0],
+                            "y1": box[1],
+                            "x2": box[2],
+                            "y2": box[3]
+                        },
+                        "category": categories[category],
+                        "score": score,
+                    } for box, category, score in zip(boxes, categories, scores)
+                ]
+            })
+
+    def on_test_epoch_end(self) -> None:
+        import json
+
+        final_results = {
+            "frames": self.results
+        }
+
+        with open("results.json", "w") as f:
+            json.dump(final_results, f)
 
     def setup(self, stage: str) -> None:
         if self.hparams.compile and stage == "fit":
@@ -286,6 +321,59 @@ class WADETRModule(LightningModule):
                 * self.hparams.optimizer.lr_linear_proj_mult,
             },
         ]
+
+        param_dicts_ = [
+            {
+                "params": [ 
+                    n
+                    for n, p in self.model.named_parameters()
+                    if (
+                        not match_name_keywords(n, ["backbone.0"])
+                        # or match_name_keywords(n, backbone_exclude)
+                    )
+                    and not match_name_keywords(
+                        n, ["reference_points", "sampling_offsets"]
+                    )
+                    and p.requires_grad
+                ],
+                "lr": self.hparams.optimizer.lr,
+            },
+            {
+                "params": [
+                    n
+                    for n, p in self.model.named_parameters()
+                    if match_name_keywords(n, ["backbone.0"])
+                    and not match_name_keywords(n, backbone_exclude)
+                    and p.requires_grad
+                ],
+                "lr": self.hparams.optimizer.lr_backbone,
+            },
+            {
+                "params": [
+                    n
+                    for n, p in self.model.named_parameters()
+                    if match_name_keywords(n, ["reference_points", "sampling_offsets"])
+                    and p.requires_grad
+                ],
+                "lr": self.hparams.optimizer.lr
+                * self.hparams.optimizer.lr_linear_proj_mult,
+            },
+            {
+                "params": [
+                    n
+                    for n, p in self.model.named_parameters()
+                    if match_name_keywords(n, backbone_exclude)
+                    and p.requires_grad
+                ],
+                "lr": self.hparams.optimizer.lr * 10,
+            }
+        ]
+
+        # print param name and its learning rate
+        for param in param_dicts_:
+            print(param["lr"])
+            for p in param["params"]:
+                print(p)
 
         optimizer = torch.optim.AdamW(
             param_dicts,

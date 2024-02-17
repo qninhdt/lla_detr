@@ -36,6 +36,9 @@ WEATHERS = [
     "undefined",
 ]
 
+categories = Mapping(CATEGORIES)
+timeofday = Mapping(TIMEOFDAY)
+weather = Mapping(WEATHERS)
 
 class BDD100KDataset(Dataset):
     def __init__(
@@ -53,9 +56,6 @@ class BDD100KDataset(Dataset):
         self.dir = Path(dir)
         self.type = type
         self.version = version
-        self.categories = Mapping(CATEGORIES)
-        self.timeofday = Mapping(TIMEOFDAY)
-        self.weather = Mapping(WEATHERS)
         self.image_size = image_size
 
         self.load_labels()
@@ -72,14 +72,14 @@ class BDD100KDataset(Dataset):
 
             sample = {
                 "name": image["name"],
-                "timeofday": self.timeofday[image["attributes"]["timeofday"]],
+                "timeofday": timeofday[image["attributes"]["timeofday"]],
                 "labels": [],
             }
 
             for label in image["labels"]:
                 sample["labels"].append(
                     {
-                        "category": self.categories[label["category"]],
+                        "category": categories[label["category"]],
                         "box2d": [
                             label["box2d"]["x1"],
                             label["box2d"]["y1"],
