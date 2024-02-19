@@ -287,18 +287,16 @@ class WADETRModule(LightningModule):
             "cls_branch",
             "backbone.0.body.layer1",
             "backbone.0.body.layer2",
+            "backbone.0.body.layer3",
             "backbone.0.body.conv1",
         ]
 
         param_dicts = [
             {
                 "params": [
-                    n
+                    p
                     for n, p in self.model.named_parameters()
-                    if (
-                        not match_name_keywords(n, ["backbone.0"])
-                        # or match_name_keywords(n, backbone_exclude)
-                    )
+                    if (not match_name_keywords(n, ["backbone.0"]))
                     and not match_name_keywords(
                         n, ["reference_points", "sampling_offsets"]
                     )
@@ -308,7 +306,7 @@ class WADETRModule(LightningModule):
             },
             {
                 "params": [
-                    n
+                    p
                     for n, p in self.model.named_parameters()
                     if match_name_keywords(n, ["backbone.0"])
                     and not match_name_keywords(n, backbone_exclude)
@@ -318,7 +316,7 @@ class WADETRModule(LightningModule):
             },
             {
                 "params": [
-                    n
+                    p
                     for n, p in self.model.named_parameters()
                     if match_name_keywords(n, ["reference_points", "sampling_offsets"])
                     and p.requires_grad
@@ -328,7 +326,7 @@ class WADETRModule(LightningModule):
             },
             {
                 "params": [
-                    n
+                    p
                     for n, p in self.model.named_parameters()
                     if match_name_keywords(n, backbone_exclude) and p.requires_grad
                 ],
