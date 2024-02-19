@@ -198,7 +198,7 @@ class ResNet(nn.Module):
             stride=2,
             dilate=replace_stride_with_dilation[1],
             num_embeddings=num_embeddings,
-            use_lla=False,
+            use_lla=True,
         )
         self.layer4 = self._make_layer(
             block,
