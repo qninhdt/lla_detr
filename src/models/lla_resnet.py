@@ -349,6 +349,15 @@ def _resnet(
             "layer2.2.conv1.weight",
             "layer2.2.conv2.weight",
             "layer2.2.conv3.weight",
+            "layer3.0.conv1.weight",
+            "layer3.0.conv2.weight",
+            "layer3.0.conv3.weight",
+            "layer3.1.conv1.weight",
+            "layer3.1.conv2.weight",
+            "layer3.1.conv3.weight",
+            "layer3.2.conv1.weight",
+            "layer3.2.conv2.weight",
+            "layer3.2.conv3.weight",
         ]
 
         state_dict_ = dict(state_dict.items())
