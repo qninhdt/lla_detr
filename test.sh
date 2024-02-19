@@ -1,7 +1,7 @@
 export TORCH_COMPILE_DEBUG=1
 
 python src/eval.py \
-	model=wa_detr \
+	model=deformable_detr \
     data=bdd100k \
     data.limit=0.1 \
     data.batch_size=2 \

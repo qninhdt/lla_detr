@@ -82,7 +82,7 @@ def load_predictions(path: str):
             )
             pred["scores"].append(label["score"])
 
-        pred["boxes"] = torch.tensor(pred["boxes"])
+        pred["boxes"] = torch.tensor(pred["boxes"]) * (1280 / 960)
         pred["labels"] = torch.tensor(pred["labels"])
         pred["scores"] = torch.tensor(pred["scores"])
         preds.append(pred)
@@ -145,7 +145,7 @@ for file in os.listdir("../baselines"):
 
 print("Saving results", end="... ")
 
-with open("../baselines/results.json", "w") as f:
+with open("../results.json", "w") as f:
     json.dump(results, f)
 
 print("Done")
